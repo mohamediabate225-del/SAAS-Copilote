@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "Copilote Entretien",
+  "version": "0.1.0",
+  "description": "Un copilote latéral pour préparer et structurer vos réponses.",
+  "minimum_chrome_version": "116",
+  "permissions": ["sidePanel", "storage"],
+  "host_permissions": ["http://127.0.0.1:3100/*", "http://127.0.0.1:3101/*"],
+  "action": {"default_title": "Ouvrir Copilote Entretien"},
+  "background": {"service_worker": "background.js"},
+  "side_panel": {"default_path": "panel.html"}
+}

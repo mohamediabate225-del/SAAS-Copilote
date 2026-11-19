@@ -1,0 +1,398 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Copilote d’entretien</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f5f6f8;
+    --surface: #ffffff;
+    --ink: #14171f;
+    --muted: #667085;
+    --line: #dfe3ea;
+    --accent: #2447f5;
+    --rec: #e5383b;
+    --focus: #14171f;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+  }
+  main { width: 100%; max-width: 720px; padding: 20px 20px 48px; }
+
+  details { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+  summary { cursor: pointer; padding: 12px 16px; font-weight: 700; list-style: none; }
+  summary::-webkit-details-marker { display: none; }
+  summary::after { content: "Modifier"; float: right; color: var(--muted); font-weight: 400; }
+  details[open] summary::after { content: "Fermer"; }
+  .fields { display: grid; gap: 14px; padding: 4px 16px 18px; }
+  label { display: grid; gap: 6px; font-size: 14px; color: var(--muted); }
+  input, textarea, select {
+    font: inherit; color: var(--ink); background: var(--bg);
+    border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; width: 100%;
+  }
+  textarea { min-height: 150px; resize: vertical; line-height: 1.45; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 520px) { .row { grid-template-columns: 1fr; } }
+
+  .stage { display: grid; justify-items: center; gap: 14px; padding: 44px 0 28px; }
+  #talk {
+    width: 116px; height: 116px; border-radius: 50%; border: 0; cursor: pointer;
+    background: var(--accent); color: #fff; display: grid; place-items: center;
+    transition: background .15s, transform .1s;
+  }
+  #talk:active { transform: scale(.97); }
+  #talk[data-state="recording"] { background: var(--rec); animation: pulse 1.6s ease-out infinite; }
+  #talk[data-state="busy"] { background: var(--muted); cursor: progress; }
+  #talk svg { width: 44px; height: 44px; fill: currentColor; }
+  #talk .ico { display: none; }
+  #talk[data-state="idle"] .ico-mic,
+  #talk[data-state="recording"] .ico-stop,
+  #talk[data-state="busy"] .ico-wait { display: block; }
+  .ico-wait { animation: spin 1s linear infinite; }
+  @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(229,56,59,.45); } 100% { box-shadow: 0 0 0 28px rgba(229,56,59,0); } }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { #talk, .ico-wait { animation: none !important; } }
+
+  :focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
+
+  #status { margin: 0; min-height: 1.5em; text-align: center; color: var(--muted); }
+  #status.error { color: var(--rec); font-weight: 700; }
+
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; margin-top: 14px; }
+  .card h2 { margin: 0 0 8px; font-size: 14px; font-weight: 400; color: var(--muted); }
+  .top-nav { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; font-size: 14px; gap: 10px; flex-wrap: wrap; }
+  .top-nav a { color: var(--muted); text-decoration: none; font-weight: 700; transition: color .15s; }
+  .top-nav a:hover { color: var(--ink); }
+  .top-nav .nav-right { display: flex; align-items: center; gap: 12px; }
+  .top-nav .badge-link { background: #eef2ff; color: var(--accent); padding: 5px 12px; border-radius: 20px; text-decoration: none; font-weight: 700; }
+  .top-nav .badge-link:hover { background: #dfe7ff; }
+  .card-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .card-head h2 { margin: 0; }
+  .btn-action {
+    background: transparent; border: 1px solid var(--line); color: var(--accent);
+    padding: 5px 12px; border-radius: 6px; font-size: 13px; font-weight: 700; cursor: pointer;
+    transition: background .15s, border-color .15s;
+  }
+  .btn-action:hover { background: #edf2fe; border-color: var(--accent); }
+  #question {
+    min-height: 52px; font-size: 16px; line-height: 1.45; resize: vertical;
+    border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px;
+    background: var(--bg); color: var(--ink);
+  }
+  #question:focus { background: #fff; border-color: var(--accent); }
+  #answer { margin: 0; font-size: 26px; line-height: 1.5; white-space: pre-wrap; max-width: 62ch; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <nav class="top-nav" aria-label="Navigation secondaire">
+    <a href="/compte.html">← Mon espace</a>
+    <div class="nav-right">
+      <a href="/entrainement.html" class="badge-link">🎯 Mode entraînement</a>
+      <a href="/extension-guide.html">Extension</a>
+      <button id="pwdBtn" class="btn-action" style="font-size:12px;padding:3px 8px" type="button" title="Gérer le mot de passe de protection">🔒 Accès</button>
+    </div>
+  </nav>
+
+  <details id="profile">
+    <summary>Mon profil</summary>
+    <div class="fields">
+      <div class="row">
+        <label>Poste visé
+          <input id="role" autocomplete="off" placeholder="Ex. Chef de projet digital">
+        </label>
+        <label>Entreprise
+          <input id="company" autocomplete="off" placeholder="Ex. Decathlon">
+        </label>
+      </div>
+      <label>Offre d’emploi
+        <textarea id="profileText" placeholder="Colle ici le texte de l’offre d’emploi."></textarea>
+      </label>
+      <div class="row">
+        <label>Source du son
+          <select id="source">
+            <option value="mic">Micro (en personne ou haut-parleur)</option>
+            <option value="tab">Audio d’un onglet ou de l’écran (Meet, Teams, Zoom web)</option>
+          </select>
+        </label>
+        <label>Langue des réponses
+          <select id="language">
+            <option value="auto">Comme la question</option>
+            <option value="fr">Français</option>
+            <option value="en">Anglais</option>
+            <option value="es">Espagnol</option>
+            <option value="de">Allemand</option>
+          </select>
+        </label>
+      </div>
+    </div>
+  </details>
+
+  <section class="stage">
+    <button id="talk" data-state="idle" aria-label="Écouter la question">
+      <svg class="ico ico-mic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 14a3.5 3.5 0 0 0 3.5-3.5v-5a3.5 3.5 0 0 0-7 0v5A3.5 3.5 0 0 0 12 14Zm6-3.5a1 1 0 1 0-2 0 4 4 0 0 1-8 0 1 1 0 1 0-2 0 6 6 0 0 0 5 5.91V19H9.5a1 1 0 1 0 0 2h5a1 1 0 1 0 0-2H13v-2.59A6 6 0 0 0 18 10.5Z"/></svg>
+      <svg class="ico ico-stop" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+      <svg class="ico ico-wait" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 1 0 10 10h-3a7 7 0 1 1-7-7V2Z"/></svg>
+    </button>
+    <p id="status" role="status" aria-live="polite">Appuie quand l’employeur commence à parler.</p>
+  </section>
+
+  <section class="card" id="qCard" hidden>
+    <div class="card-head">
+      <h2>Question entendue <span style="font-size:12px;color:var(--muted);font-weight:normal">(modifiable)</span></h2>
+      <button id="retryBtn" class="btn-action" type="button" title="Relancer la génération de la réponse">Relancer la réponse ↺</button>
+    </div>
+    <textarea id="question" rows="2" placeholder="Question entendue..."></textarea>
+  </section>
+  <section class="card" id="aCard" hidden>
+    <h2>À dire</h2>
+    <p id="answer" aria-live="polite"></p>
+  </section>
+</main>
+
+<script>
+(() => {
+  const $ = (s) => document.querySelector(s);
+  const btn = $("#talk"), statusEl = $("#status"), retryBtn = $("#retryBtn"), pwdBtn = $("#pwdBtn");
+  const qCard = $("#qCard"), aCard = $("#aCard"), qEl = $("#question"), aEl = $("#answer");
+  const fields = {
+    role: $("#role"), company: $("#company"), profile: $("#profileText"),
+    source: $("#source"), language: $("#language"),
+  };
+
+  // --- Sécurité APP_PASSWORD ---
+  const PWD_KEY = "interview-copilot:app-password";
+  const getAppPassword = () => { try { return localStorage.getItem(PWD_KEY) || ""; } catch { return ""; } };
+  const setAppPassword = (val) => {
+    try {
+      if (val) localStorage.setItem(PWD_KEY, val);
+      else localStorage.removeItem(PWD_KEY);
+    } catch {}
+    updatePwdBadge();
+  };
+  function updatePwdBadge() {
+    if (pwdBtn) pwdBtn.textContent = getAppPassword() ? "🔒 Protégé" : "🔓 Accès";
+  }
+  updatePwdBadge();
+  if (pwdBtn) {
+    pwdBtn.addEventListener("click", () => {
+      const current = getAppPassword();
+      const next = prompt("Mot de passe APP_PASSWORD (laisse vide si aucun mot de passe requis sur ce serveur) :", current);
+      if (next !== null) setAppPassword(next.trim());
+    });
+  }
+
+  async function authFetch(url, options = {}) {
+    const headers = new Headers(options.headers || {});
+    const pwd = getAppPassword();
+    if (pwd) headers.set("x-app-password", pwd);
+    const res = await fetch(url, { ...options, headers });
+    if (res.status === 401) {
+      const data = await res.clone().json().catch(() => ({}));
+      if (data?.error === "Mot de passe invalide.") {
+        const entered = prompt("Ce serveur est protégé par un mot de passe (APP_PASSWORD). Veuillez le saisir :");
+        if (entered) {
+          setAppPassword(entered.trim());
+          headers.set("x-app-password", entered.trim());
+          return fetch(url, { ...options, headers });
+        }
+      }
+    }
+    return res;
+  }
+
+  // --- Profil sauvegardé dans le navigateur ---
+  const KEY = "interview-copilot:v1";
+  const load = () => { try { return JSON.parse(localStorage.getItem(KEY) || "{}"); } catch { return {}; } };
+  const save = () => {
+    const data = Object.fromEntries(Object.entries(fields).map(([k, el]) => [k, el.value]));
+    try { localStorage.setItem(KEY, JSON.stringify(data)); } catch {}
+  };
+  const saved = load();
+  let candidateContext = "";
+  for (const [k, el] of Object.entries(fields)) {
+    if (saved[k] != null) el.value = saved[k];
+    el.addEventListener("input", save);
+    el.addEventListener("change", save);
+  }
+  if (!fields.profile.value.trim()) $("#profile").open = true;
+
+  Promise.all([
+    authFetch("/api/account/me").then(r => r.ok ? r.json() : null),
+    authFetch("/api/account/preparation").then(r => r.ok ? r.json() : null),
+    authFetch("/api/account/resumes").then(r => r.ok ? r.json() : []),
+  ]).then(([user, preparation, resumes]) => {
+    if (!user || !preparation) return;
+    const resume = resumes.find(item => item.id === preparation.resume_id);
+    candidateContext = [resume?.content, user.goals && `Métiers recherchés : ${user.goals}`, user.salary && `Salaire recherché : ${user.salary}`, user.notes, preparation.notes].filter(Boolean).join("\n\n");
+    if (preparation.role) fields.role.value = preparation.role;
+    if (preparation.company) fields.company.value = preparation.company;
+    if (preparation.offer) fields.profile.value = preparation.offer;
+  }).catch(() => {});
+
+  // --- État ---
+  let state = "idle", recorder = null, chunks = [], release = () => {};
+  const history = [];
+
+  const LABELS = {
+    idle: ["Écouter la question", "Appuie quand l’employeur commence à parler."],
+    recording: ["Terminer l’écoute", "J’écoute… appuie dès qu’il a fini sa question."],
+    busy: ["Traitement en cours", ""],
+  };
+  function setState(next, message, isError = false) {
+    state = next;
+    btn.dataset.state = next;
+    btn.setAttribute("aria-label", LABELS[next][0]);
+    statusEl.textContent = message ?? LABELS[next][1];
+    statusEl.classList.toggle("error", isError);
+    if (retryBtn) retryBtn.disabled = next === "busy";
+  }
+
+  // --- Génération de la réponse ---
+  async function askAnswer(questionText) {
+    const q = (questionText || "").trim();
+    if (!q) {
+      setState("idle", "Veuillez saisir ou enregistrer une question.", true);
+      return;
+    }
+    qEl.value = q;
+    qCard.hidden = false;
+    aEl.textContent = "";
+    aCard.hidden = false;
+    setState("busy", "Je prépare ta réponse…");
+
+    try {
+      const res = await authFetch("/api/answer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question: q,
+          history,
+          context: {
+            role: fields.role.value, company: fields.company.value,
+            profile: candidateContext, offer: fields.profile.value, language: fields.language.value,
+          },
+        }),
+      });
+
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Erreur serveur.");
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let text = "";
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        text += decoder.decode(value, { stream: true });
+        aEl.textContent = text;
+      }
+      history.push({ q, a: text });
+      if (history.length > 5) history.shift();
+      setState("idle", "Réponse prête à être lue.");
+    } catch (err) {
+      setState("idle", err.message || "Une erreur est survenue.", true);
+    }
+  }
+
+  // Relancer si on clique sur le bouton ou si on fait Ctrl+Entrée / Entrée dans le champ question
+  if (retryBtn) {
+    retryBtn.addEventListener("click", () => askAnswer(qEl.value));
+  }
+  qEl.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      askAnswer(qEl.value);
+    }
+  });
+
+  // --- Capture audio ---
+  async function openAudio() {
+    if (fields.source.value === "tab") {
+      const display = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+      const tracks = display.getAudioTracks();
+      if (!tracks.length) {
+        display.getTracks().forEach((t) => t.stop());
+        throw new Error("Aucun son partagé. Dans la fenêtre de partage, coche « Partager l’audio ».");
+      }
+      return { stream: new MediaStream(tracks), release: () => display.getTracks().forEach((t) => t.stop()) };
+    }
+    const mic = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: false, noiseSuppression: true, autoGainControl: true },
+    });
+    return { stream: mic, release: () => mic.getTracks().forEach((t) => t.stop()) };
+  }
+
+  async function startListening() {
+    try {
+      setState("busy", "Choisis la source audio et autorise le partage…");
+      const audio = await openAudio();
+      release = audio.release;
+      const mime = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"].find((m) => MediaRecorder.isTypeSupported(m));
+      recorder = new MediaRecorder(audio.stream, mime ? { mimeType: mime } : undefined);
+      chunks = [];
+      recorder.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+      recorder.onstop = onRecorded;
+      recorder.start();
+      setState("recording");
+    } catch (err) {
+      release();
+      const denied = err?.name === "NotAllowedError";
+      setState("idle", denied ? "Accès au micro ou à l’écran refusé. Autorise-le dans le navigateur." : err.message || "Impossible de lancer l’écoute.", true);
+    }
+  }
+
+  function stopListening() {
+    setState("busy", "Je transcris la question…");
+    if (recorder && recorder.state !== "inactive") recorder.stop();
+  }
+
+  // --- Audio -> question -> réponse ---
+  async function onRecorded() {
+    release();
+    try {
+      const blob = new Blob(chunks, { type: recorder.mimeType || "audio/webm" });
+      if (blob.size < 3000) throw new Error("Je n’ai rien entendu. Vérifie la source du son et réessaie.");
+
+      const form = new FormData();
+      form.append("audio", blob, "question.webm");
+      form.append("language", fields.language.value);
+      const tr = await authFetch("/api/transcribe", { method: "POST", body: form });
+      const trData = await tr.json().catch(() => ({}));
+      if (!tr.ok) throw new Error(trData.error || "Échec de la transcription.");
+      const question = (trData.text || "").trim();
+      if (!question) throw new Error("Je n’ai rien compris. Réessaie.");
+
+      await askAnswer(question);
+    } catch (err) {
+      setState("idle", err.message || "Une erreur est survenue.", true);
+    }
+  }
+
+  btn.addEventListener("click", () => {
+    if (state === "idle") startListening();
+    else if (state === "recording") stopListening();
+  });
+
+  // Espace = bouton, sauf quand on écrit dans un champ
+  document.addEventListener("keydown", (e) => {
+    if (e.code !== "Space" || e.repeat) return;
+    if (/^(INPUT|TEXTAREA|SELECT|SUMMARY|BUTTON)$/.test(document.activeElement.tagName)) return;
+    e.preventDefault();
+    btn.click();
+  });
+})();
+</script>
+</body>
+</html>
