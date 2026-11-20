@@ -1,51 +1,29 @@
-# Copilote d'entretien (MVP)
+# Copilote Entretien
 
-L'employeur pose une question → tu cliques → l'IA écoute → tu cliques → tu lis la réponse.
+Copilote Entretien est une application de préparation aux entretiens. Elle comprend une démo sans compte, des simulations personnalisées et un copilote audio utilisable dans les situations qui l’autorisent.
 
-## Lancer en 2 minutes
+## Démarrage local
 
-```bash
-npm install
-cp .env.example .env      # puis colle ta clé OPENAI_API_KEY dans .env
-npm start
-```
+Installez Node.js 24 ou plus récent, puis lancez `npm ci`. Créez `.env` à partir de `.env.example` et configurez `OPENAI_API_KEY`. La commande `npm start` ouvre le service sur `http://localhost:3100` par défaut. `npm test` vérifie les parcours API avec une base SQLite vierge et un fournisseur IA simulé.
 
-Ouvre http://localhost:3000 dans Chrome ou Edge.
+Les tests navigateur peuvent utiliser une installation de Playwright indépendante du projet. Indiquez son dossier parent via `COPILOTE_PLAYWRIGHT`. Ce dossier doit contenir `node_modules/playwright`. Installez le navigateur WebKit de Playwright et Microsoft Edge avant d’exécuter la suite.
 
-1. Ouvre « Mon profil », colle ton CV / tes réalisations, indique le poste et l'entreprise. C'est sauvegardé dans ton navigateur.
-2. Clique sur le bouton rond (ou barre Espace) quand l'employeur commence sa question.
-3. Reclique quand il a fini. La question apparaît, puis la réponse arrive en streaming.
+## Parcours candidat
 
-## Source du son
+- L’essai IA dure 10 minutes à partir de la première action IA. L’espace candidat et les débriefs restent disponibles après expiration.
+- L’espace prépare le poste, l’offre et le CV. Les simulations et le copilote réutilisent ces données.
+- Une simulation peut être reprise depuis l’historique. Elle accepte les réponses écrites et la dictée.
+- Les indicateurs de dictée sont des estimations tirées des mots transcrits et du temps enregistré.
+- Le navigateur peut ouvrir la démo hors connexion après une première visite. L’espace candidat et les appels IA requièrent une connexion.
+- Le panneau Chrome local s’associe avec un code révoquable valable 7 jours. Le raccourci proposé ouvre le panneau. L’utilisateur choisit ensuite la source audio.
+- Les participants doivent être informés de la capture audio. Pour un entretien réel, vérifiez les règles de l’employeur et obtenez l’accord des participants.
 
-- **Micro** : entretien en personne, ou visio avec haut-parleurs (le micro capte la voix de l'employeur).
-- **Audio d'un onglet / de l'écran** : visio dans le navigateur (Meet, Teams web, Zoom web). Dans la fenêtre de partage de Chrome, choisis l'onglet de l'appel et coche « Partager l'audio de l'onglet ». Sur Windows, tu peux aussi partager « tout l'écran » avec l'audio du système. Sur macOS, seul l'audio d'onglet est disponible.
+## Configuration d’un hébergement
 
-Le micro demande HTTPS, sauf sur `localhost`.
+Le Dockerfile exécute Node.js sans privilèges administrateur. Utilisez une instance avec stockage persistant monté sur `/data` et un proxy HTTPS à l’adresse exacte fournie dans `APP_BASE_URL`. Configurez les adresses de proxy de confiance avec `TRUST_PROXY` selon l’hébergement. Gardez ce volume hors des sauvegardes publiques. Les sauvegardes SQLite effectuées pendant le fonctionnement doivent utiliser un mécanisme compatible avec SQLite.
 
-## Réglages qui comptent
+Les secrets sont des variables d’environnement du serveur. Pour le mot de passe oublié, configurez SMTP et l’origine publique HTTPS. Pour la facturation, configurez les clés Stripe, les identifiants de tarifs récurrents et le portail client. Enregistrez `/api/billing/webhook` pour les événements `customer.subscription.created`, `customer.subscription.updated` et `customer.subscription.deleted`. Validez le parcours Stripe en mode test avant tout encaissement.
 
-- **Qualité du profil** : plus il est précis (chiffres, projets, outils), meilleures sont les réponses. L'IA n'invente rien : sans matière, elle reste générale.
-- **Vitesse** : `gpt-4o-mini` est rapide. Pour des réponses plus fines, mets `ANSWER_MODEL` sur un modèle plus puissant, au prix d'un peu de latence.
-- **Style** : tout se règle dans `prompts.js` (longueur, ton, règles par type de question).
+La prévisualisation privée s’active avec un `PREVIEW_TOKEN` aléatoire d’au moins 32 caractères et une origine HTTPS. Le lien de prévisualisation transmet ce jeton une fois, puis le serveur redirige vers une URL sans jeton et envoie un cookie signé. Réservez cette configuration aux aperçus privés.
 
-## Mettre en ligne
-
-Render, Railway ou Fly.io conviennent : variables d'environnement `OPENAI_API_KEY` et `APP_PASSWORD`, commande `npm start`. Ne publie jamais sans `APP_PASSWORD`. L'application gère désormais la saisie et l'envoi du mot de passe via l'en-tête `x-app-password`.
-
-## Fonctionnalités incluses
-
-- **Copilote en direct (`/index.html`)** : Écoute en 1 clic (ou touche Espace), transcription, modification possible de la question et streaming de la réponse oralisée.
-- **Mode Entraînement (`/entrainement.html`)** : Simulation face à un recruteur IA (voix/texte) avec débriefing et coaching instantané sur vos réponses.
-- **Espace candidat (`/compte.html`)** : Import de CV PDF (`pdf-parse`), ciblage d'offres et sauvegarde en base locale SQLite.
-- **Extension Chrome (`/extension`)** : Volet latéral (Side Panel) synchronisé avec le compte pour s'entraîner ou s'assister pendant un appel visio (Teams, Meet, Zoom).
-
-## Idées pour la suite
-
-- Intégration Stripe (abonnements et crédits d'utilisation).
-- VAD (détection automatique de silence pour ne plus cliquer).
-- Bibliothèque de réponses favorites et historique des entraînements.
-
-## Avant ton vrai entretien
-
-Beaucoup d'employeurs interdisent l'aide d'une IA pendant un entretien. Vérifie les règles de celui que tu passes. L'outil est aussi très utile en entraînement : fais des simulations, lis les réponses proposées, puis reformule-les avec tes mots.
+`npm run usage` affiche les nombres agrégés de simulations, d’essais et d’abonnements, ainsi que les appels IA, les jetons signalés par l’API et le volume audio. Le rapport ne contient ni le texte des échanges ni d’identifiants.

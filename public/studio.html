@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <meta name="theme-color" content="#132f35" />
+    <title>Session en direct · Copilote Entretien</title>
+    <link rel="icon" href="/copilote.svg" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="stylesheet" href="/ui.css" />
+    <link rel="stylesheet" href="/espace.css" />
+  </head>
+  <body class="desk studio">
+    <header class="studio-bar">
+      <a href="/dashboard.html#sessions" class="brand"
+        ><img src="/copilote.svg" alt="" width="32" height="32" />Copilote
+        Entretien</a
+      ><span id="callName"></span
+      ><a class="button" href="/dashboard.html#sessions" id="exit">Quitter</a>
+    </header>
+    <main>
+      <section class="connect pane" id="connect">
+        <h1>Connecter la session</h1>
+        <p id="context"></p>
+        <form id="connectForm" class="form-stack">
+          <label
+            >Appareil de l’appel<select id="device">
+              <option value="tab">Onglet du navigateur</option>
+              <option value="mic">Autre appareil · microphone</option>
+            </select></label
+          >
+          <label
+            >Service d’appel<select id="service">
+              <option>Google Meet</option>
+              <option>Microsoft Teams</option>
+              <option>Zoom</option>
+              <option>Webex</option>
+              <option>Autre appel vidéo</option>
+            </select></label
+          >
+          <p id="guide"></p>
+          <label class="check"
+            ><input type="checkbox" id="consent" required />Les participants ont
+            donné leur accord pour la transcription.</label
+          ><button class="primary">Connecter l’audio</button
+          ><button type="button" id="textMode">Continuer au clavier</button>
+        </form>
+        <p id="connectStatus" role="status"></p>
+      </section>
+      <section id="room" hidden>
+        <div class="studio-grid">
+          <section class="transcript">
+            <header>
+              <h2>Conversation</h2>
+              <button id="audioButton">Connecter l’audio</button>
+            </header>
+            <div id="studioTrial" class="trial-bar" hidden>
+              <span></span> <time></time>
+              <a href="/tarifs.html">Voir les offres</a>
+            </div>
+            <p class="muted" id="audioStatus" role="status"></p>
+            <div id="turns"></div>
+          </section>
+          <section class="answers">
+            <header>
+              <h2>Réponses suggérées</h2>
+              <span id="recording"></span>
+            </header>
+            <div id="answers"></div>
+            <form id="ask">
+              <label
+                >Question à traiter<textarea
+                  id="question"
+                  rows="2"
+                  maxlength="2000"
+                  placeholder="Saisissez une question ou utilisez la conversation."
+                ></textarea></label
+              ><label id="useWeb" hidden
+                >Sources<select id="web">
+                  <option value="auto">
+                    Recherche automatique pour les questions générales
+                  </option>
+                  <option value="off">
+                    CV, documents et connaissances du modèle
+                  </option>
+                  <option value="on">
+                    Rechercher cette question sur Internet
+                  </option>
+                </select></label
+              ><button class="primary" id="answer">Répondre</button>
+            </form>
+            <p id="roomStatus" role="status"></p>
+          </section>
+        </div>
+      </section>
+    </main>
+    <script type="module" src="/studio.js"></script>
+  </body>
+</html>

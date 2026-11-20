@@ -1,21 +1,39 @@
+import { api, json, showMessage } from "./app.js";
+
 const token = location.hash.slice(1);
+const status = document.querySelector("#status");
 if (token) {
   history.replaceState(null, "", location.pathname);
   document.querySelector("#request").hidden = true;
   document.querySelector("#reset").hidden = false;
+  document.querySelector("#reset-title").textContent = "Choisissez un nouveau mot de passe";
 }
-for (const type of ["request", "reset"]) document.querySelector("#" + type).addEventListener("submit", async event => {
-  event.preventDefault();
-  const form = event.currentTarget, status = document.querySelector("#status");
-  const data = Object.fromEntries(new FormData(form));
-  if (type === "reset" && data.password !== data.password_confirmation) { status.textContent = "Les mots de passe ne correspondent pas."; return; }
-  if (type === "reset") data.token = token;
-  try {
-    const response = await fetch("/api/account/" + (type === "request" ? "forgot-password" : "reset-password"), { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(data) });
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.error);
-    form.reset();
-    status.textContent = type === "request" ? "Si un compte correspond à cette adresse, un email vous sera envoyé." : "Mot de passe modifié. Vous pouvez vous connecter.";
-    if (type === "reset") form.hidden = true;
-  } catch (error) { status.textContent = error.message || "Une erreur est survenue."; }
-});
+
+for (const form of document.querySelectorAll("form")) {
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const reset = form.id === "reset";
+    const data = Object.fromEntries(new FormData(form));
+    if (reset && data.password !== data.password_confirmation) {
+      showMessage(status, "Les mots de passe ne correspondent pas.", true);
+      form.elements.password_confirmation.focus();
+      return;
+    }
+    if (reset) data.token = token;
+    const button = form.querySelector("button");
+    button.disabled = true;
+    showMessage(status, reset ? "Vérification en cours…" : "Envoi de la demande…");
+    try {
+      await api("/api/account/" + (reset ? "reset-password" : "forgot-password"), json("POST", data));
+      form.reset();
+      showMessage(status, reset
+        ? "Mot de passe modifié. Vous pouvez vous reconnecter."
+        : "Si un compte correspond à cette adresse, vous recevrez un email.");
+      if (reset) form.hidden = true;
+    } catch (error) {
+      showMessage(status, error.message, true);
+    } finally {
+      button.disabled = false;
+    }
+  });
+}

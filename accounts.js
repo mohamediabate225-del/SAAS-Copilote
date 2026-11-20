@@ -1,36 +1,79 @@
 import { DatabaseSync } from "node:sqlite";
-import { randomBytes, scryptSync, timingSafeEqual, createHash } from "node:crypto";
+import { randomBytes, randomUUID, scryptSync, timingSafeEqual, createHash } from "node:crypto";
 import { PDFParse } from "pdf-parse";
 import nodemailer from "nodemailer";
+import { limitRequests, secureRequest } from "./security.js";
 
-const db = new DatabaseSync(process.env.COPILOTE_DB_PATH || "copilote-local.sqlite");
+export const db = new DatabaseSync(process.env.COPILOTE_DB_PATH || "copilote-local.sqlite");
 db.exec(`PRAGMA foreign_keys=ON;
-CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, email TEXT UNIQUE NOT NULL, salt TEXT NOT NULL, password_hash TEXT NOT NULL, goals TEXT DEFAULT '', salary TEXT DEFAULT '', notes TEXT DEFAULT '');
+CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, email TEXT UNIQUE NOT NULL, salt TEXT NOT NULL, password_hash TEXT NOT NULL, goals TEXT DEFAULT '', salary TEXT DEFAULT '', notes TEXT DEFAULT '', trial_started INTEGER);
 CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, expires INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS resumes (id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, name TEXT NOT NULL, content TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS preparations (user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, resume_id INTEGER, role TEXT DEFAULT '', company TEXT DEFAULT '', offer TEXT DEFAULT '', notes TEXT DEFAULT '');`);
 const columns = db.prepare("PRAGMA table_info(users)").all().map(column => column.name);
 if (!columns.includes("first_name")) db.exec("ALTER TABLE users ADD COLUMN first_name TEXT NOT NULL DEFAULT ''");
 if (!columns.includes("last_name")) db.exec("ALTER TABLE users ADD COLUMN last_name TEXT NOT NULL DEFAULT ''");
+if (!columns.includes("trial_started")) db.exec("ALTER TABLE users ADD COLUMN trial_started INTEGER");
+if (!columns.includes("trial_eligible")) db.exec("ALTER TABLE users ADD COLUMN trial_eligible INTEGER NOT NULL DEFAULT 0");
+if (!columns.includes("billing_reference")) db.exec("ALTER TABLE users ADD COLUMN billing_reference TEXT");
+const assignReference = db.prepare("UPDATE users SET billing_reference=? WHERE id=? AND billing_reference IS NULL");
+for (const { id } of db.prepare("SELECT id FROM users WHERE billing_reference IS NULL").all()) assignReference.run(randomUUID(), id);
+db.exec("CREATE UNIQUE INDEX IF NOT EXISTS account_billing_reference ON users(billing_reference)");
 db.exec("CREATE TABLE IF NOT EXISTS password_resets (token_hash TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, expires INTEGER NOT NULL)");
-const resetAttempts = new Map();
+db.exec(`CREATE TABLE IF NOT EXISTS extension_tokens (
+  token_hash TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, expires INTEGER NOT NULL
+)`);
 const digest = value => createHash("sha256").update(value).digest("hex");
+const cookieToken = (req) => req.get("cookie")?.match(/(?:^|;\s*)copilote_session=([a-f0-9]{64})(?:;|$)/)?.[1];
+const publicFields = "users.id, users.email, users.first_name, users.last_name, users.goals, users.salary, users.notes, users.trial_started, users.trial_eligible";
+const sessionUser = db.prepare(`SELECT ${publicFields} FROM sessions JOIN users ON users.id=sessions.user_id WHERE token_hash=? AND expires>?`);
+const extensionUser = db.prepare(`SELECT ${publicFields} FROM extension_tokens JOIN users ON users.id=extension_tokens.user_id WHERE token_hash=? AND expires>?`);
 function current(req) {
-  const match = (req.headers.cookie || "").match(/(?:^|;\s*)copilote_session=([a-f0-9]{64})(?:;|$)/);
-  return match && db.prepare("SELECT users.id, users.email, users.first_name, users.last_name, users.goals, users.salary, users.notes FROM sessions JOIN users ON users.id=sessions.user_id WHERE token_hash=? AND expires>?").get(digest(match[1]), Date.now());
+  if (req.extensionRequest) {
+    const token = req.get("authorization")?.match(/^Bearer ([a-f0-9]{64})$/)?.[1];
+    return token && extensionUser.get(digest(token), Date.now());
+  }
+  const token = cookieToken(req);
+  return token && sessionUser.get(digest(token), Date.now());
 }
-function requireUser(req, res, next) {
+
+export function trialStatus(user) {
+  const total = 600;
+  if (user.trial_started == null) {
+    return { active: false, state: user.trial_eligible ? "ready" : "legacy", remaining_seconds: total, total_seconds: total };
+  }
+  const expiresAt = user.trial_started + total * 1000;
+  const remaining = Math.min(total, Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000)));
+  return {
+    active: remaining > 0, state: remaining > 0 ? "active" : "expired",
+    remaining_seconds: remaining, total_seconds: total, expires_at: expiresAt,
+  };
+}
+
+export function startTrial(user) {
+  if (user.trial_eligible && user.trial_started == null) {
+    db.prepare("UPDATE users SET trial_started=? WHERE id=? AND trial_started IS NULL").run(Date.now(), user.id);
+    user.trial_started = db.prepare("SELECT trial_started FROM users WHERE id=?").get(user.id).trial_started;
+  }
+  return trialStatus(user);
+}
+
+export function requireUser(req, res, next) {
   req.user = current(req);
   if (!req.user) return res.status(401).json({ error: "Connectez-vous pour continuer." });
   next();
 }
-function session(res, id) {
+export function session(req, res, id) {
   const token = randomBytes(32).toString("hex");
+  db.prepare("DELETE FROM sessions WHERE expires<=? OR token_hash=?").run(Date.now(), digest(cookieToken(req) || ""));
   db.prepare("INSERT INTO sessions VALUES (?, ?, ?)").run(digest(token), id, Date.now() + 86400000 * 7);
-  res.setHeader("Set-Cookie", `copilote_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=604800`);
+  const secure = secureRequest(req) ? "; Secure" : "";
+  res.setHeader("Set-Cookie", `copilote_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=604800${secure}`);
 }
+const accountLimit = (limit) => limitRequests({ limit, windowMs: 15 * 60 * 1000 });
+
 export function registerAccounts(app, upload) {
-  app.post("/api/account/register", (req, res) => {
+  app.post("/api/account/register", accountLimit(8), (req, res) => {
     const email = String(req.body?.email || "").trim().toLowerCase();
     const password = String(req.body?.password || "");
     const firstName = String(req.body?.first_name || "").trim();
@@ -41,17 +84,14 @@ export function registerAccounts(app, upload) {
     try {
       const salt = randomBytes(16).toString("hex");
       const hash = scryptSync(password, salt, 64).toString("hex");
-      const row = db.prepare("INSERT INTO users(email,salt,password_hash,first_name,last_name) VALUES(?,?,?,?,?)").run(email, salt, hash, firstName, lastName);
-      session(res, row.lastInsertRowid); res.json({ok:true});
+      const row = db.prepare("INSERT INTO users(email,salt,password_hash,first_name,last_name,trial_eligible,billing_reference) VALUES(?,?,?,?,?,1,?)").run(email, salt, hash, firstName, lastName, randomUUID());
+      session(req, res, row.lastInsertRowid); res.status(201).json({ok:true});
     } catch { res.status(400).json({error:"Impossible de créer le compte. Vérifiez vos informations."}); }
   });
-  app.post("/api/account/forgot-password", async (req,res) => {
+  app.post("/api/account/forgot-password", accountLimit(5), async (req,res) => {
     const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, SMTP_FROM, APP_BASE_URL } = process.env;
     if (!SMTP_HOST || !SMTP_PORT || !SMTP_USER || !SMTP_PASSWORD || !SMTP_FROM || !APP_BASE_URL) return res.status(503).json({error:"L’envoi d’emails n’est pas encore configuré sur ce prototype."});
-    const ip = req.ip || "local", now = Date.now();
-    const attempts = (resetAttempts.get(ip) || []).filter(time => now - time < 15 * 60 * 1000);
-    if (attempts.length >= 5) return res.status(429).json({error:"Trop de demandes. Réessayez dans 15 minutes."});
-    attempts.push(now); resetAttempts.set(ip, attempts);
+    const now = Date.now();
     const email = String(req.body?.email || "").trim().toLowerCase();
     const user = db.prepare("SELECT id FROM users WHERE email=?").get(email);
     if (user) {
@@ -66,7 +106,7 @@ export function registerAccounts(app, upload) {
     }
     res.json({ok:true});
   });
-  app.post("/api/account/reset-password", (req,res) => {
+  app.post("/api/account/reset-password", accountLimit(10), (req,res) => {
     const token = String(req.body?.token || ""), password = String(req.body?.password || "");
     if (!/^[a-f0-9]{64}$/.test(token) || password.length < 10 || password.length > 200 || password !== String(req.body?.password_confirmation || "")) return res.status(400).json({error:"Vérifiez le lien et les deux mots de passe (10 caractères minimum)."});
     const entry = db.prepare("SELECT user_id FROM password_resets WHERE token_hash=? AND expires>?").get(digest(token), Date.now());
@@ -77,22 +117,53 @@ export function registerAccounts(app, upload) {
       db.prepare("UPDATE users SET salt=?,password_hash=? WHERE id=?").run(salt,hash,entry.user_id);
       db.prepare("DELETE FROM password_resets WHERE user_id=?").run(entry.user_id);
       db.prepare("DELETE FROM sessions WHERE user_id=?").run(entry.user_id);
+      db.prepare("DELETE FROM extension_tokens WHERE user_id=?").run(entry.user_id);
       db.exec("COMMIT"); res.json({ok:true});
     } catch { db.exec("ROLLBACK"); res.status(500).json({error:"Impossible de modifier le mot de passe."}); }
   });
-  app.post("/api/account/login", (req, res) => {
+  app.post("/api/account/login", accountLimit(20), (req, res) => {
     const user = db.prepare("SELECT * FROM users WHERE email=?").get(String(req.body?.email || "").trim().toLowerCase());
-    const password = String(req.body?.password || "").slice(0,200);
+    const password = String(req.body?.password || "");
+    if (password.length > 200) return res.status(401).json({error:"Email ou mot de passe incorrect."});
     const computed = scryptSync(password, user?.salt || "00000000000000000000000000000000", 64);
     if (!user || !timingSafeEqual(computed, Buffer.from(user.password_hash,"hex"))) return res.status(401).json({error:"Email ou mot de passe incorrect."});
-    session(res,user.id); res.json({ok:true});
+    session(req, res, user.id); res.json({ok:true});
   });
   app.post("/api/account/logout", (req,res) => {
     const match=(req.headers.cookie||"").match(/(?:^|;\s*)copilote_session=([a-f0-9]{64})(?:;|$)/);
     if(match) db.prepare("DELETE FROM sessions WHERE token_hash=?").run(digest(match[1]));
-    res.setHeader("Set-Cookie","copilote_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0"); res.json({ok:true});
+    const secure = secureRequest(req) ? "; Secure" : "";
+    res.setHeader("Set-Cookie", `copilote_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0${secure}`); res.json({ok:true});
   });
   app.get("/api/account/me",requireUser,(req,res)=>res.json(req.user));
+  app.get("/api/account/trial", requireUser, (req, res) => res.json(trialStatus(req.user)));
+  app.get("/api/account/context", requireUser, (req, res) => {
+    const preparation = db.prepare(`SELECT p.resume_id, p.role, p.company, p.offer, p.notes, r.content
+      FROM preparations p LEFT JOIN resumes r ON r.id=p.resume_id AND r.user_id=p.user_id WHERE p.user_id=?`).get(req.user.id) || {};
+    const { content, ...settings } = preparation;
+    const { id, first_name, goals, salary, notes } = req.user;
+    res.json({ id, first_name, ...settings, profile: [
+      content, goals && `Métiers recherchés : ${goals}`, salary && `Salaire recherché : ${salary}`, notes, settings.notes,
+    ].filter(Boolean).join("\n\n") });
+  });
+  app.post("/api/account/extension", requireUser, (req, res) => {
+    const token = randomBytes(32).toString("hex");
+    const expires = Date.now() + 7 * 86400000;
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      db.prepare("DELETE FROM extension_tokens WHERE user_id=? OR expires<=?").run(req.user.id, Date.now());
+      db.prepare("INSERT INTO extension_tokens VALUES (?, ?, ?)").run(digest(token), req.user.id, expires);
+      db.exec("COMMIT");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+    res.status(201).json({ token, expires_at: expires });
+  });
+  app.delete("/api/account/extension", requireUser, (req, res) => {
+    db.prepare("DELETE FROM extension_tokens WHERE user_id=?").run(req.user.id);
+    res.json({ ok: true });
+  });
   app.put("/api/account/profile",requireUser,(req,res)=>{
     const fields=["goals","salary","notes"].map(k=>String(req.body?.[k]||"").slice(0,12000));
     db.prepare("UPDATE users SET goals=?,salary=?,notes=? WHERE id=?").run(...fields,req.user.id);res.json({ok:true});
@@ -100,17 +171,38 @@ export function registerAccounts(app, upload) {
   app.get("/api/account/resumes",requireUser,(req,res)=>res.json(db.prepare("SELECT id,name,content FROM resumes WHERE user_id=? ORDER BY id DESC").all(req.user.id)));
   app.post("/api/account/resumes",requireUser,upload.single("pdf"),async(req,res)=>{
     try {
+      if(db.prepare('SELECT COUNT(*) AS n FROM resumes WHERE user_id=?').get(req.user.id).n>=50)return res.status(409).json({error:"Limite de 50 CV atteinte. Supprimez une ancienne version."});
       let content=String(req.body?.content||"").trim();
       if(req.file){
+        if (/\.txt$/i.test(req.file.originalname)) {
+          content = new TextDecoder('utf-8', { fatal: true }).decode(req.file.buffer).trim();
+          if (content.includes('\0')) return res.status(400).json({error:"Choisissez un fichier texte UTF-8 valide."});
+        } else {
         if(req.file.mimetype!=="application/pdf" || req.file.buffer.subarray(0,5).toString()!=="%PDF-") return res.status(400).json({error:"Choisissez un fichier PDF valide."});
         const parser=new PDFParse({data:req.file.buffer});
         try { content=(await parser.getText()).text.trim(); } finally { await parser.destroy(); }
+        }
       }
       if(!content) return res.status(400).json({error:"Aucun texte trouvé. Collez le texte si le PDF est une image."});
       const name=String(req.body?.name||req.file?.originalname||"Mon CV").slice(0,120);
       const row=db.prepare("INSERT INTO resumes(user_id,name,content) VALUES(?,?,?)").run(req.user.id,name,content.slice(0,50000));
-      res.json({id:Number(row.lastInsertRowid),name});
+      if(req.file) db.prepare('UPDATE resumes SET original=?,mime=? WHERE id=?').run(req.file.buffer,/\.txt$/i.test(req.file.originalname)?'text/plain':'application/pdf',row.lastInsertRowid);
+      res.json({id:Number(row.lastInsertRowid),name,content:content.slice(0,50000)});
     }catch{res.status(400).json({error:"Impossible de lire ce PDF. Essayez de coller le texte du CV."});}
+  });
+  app.delete("/api/account/resumes/:id", requireUser, (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ error: "CV invalide." });
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      db.prepare("UPDATE preparations SET resume_id=NULL WHERE user_id=? AND resume_id=?").run(req.user.id, id);
+      db.prepare("DELETE FROM resumes WHERE user_id=? AND id=?").run(req.user.id, id);
+      db.exec("COMMIT");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+    res.status(204).end();
   });
   app.get("/api/account/preparation",requireUser,(req,res)=>res.json(db.prepare("SELECT resume_id,role,company,offer,notes FROM preparations WHERE user_id=?").get(req.user.id)||{}));
   app.put("/api/account/preparation",requireUser,(req,res)=>{

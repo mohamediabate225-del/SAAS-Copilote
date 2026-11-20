@@ -1,576 +1,73 @@
 <!doctype html>
 <html lang="fr">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Mode Entraînement — Copilote Entretien</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Bricolage+Grotesque:opsz,wght@12..96,600&display=swap" rel="stylesheet">
-<style>
-  :root {
-    --bg: #faf8f5;
-    --surface: #ffffff;
-    --ink: #172d45;
-    --muted: #586574;
-    --line: #e5e2dc;
-    --accent: #2447f5;
-    --orange: #a7431f;
-    --orange-soft: #fbf0e8;
-    --rec: #e5383b;
-    --success: #1b7a42;
-  }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0;
-    background: var(--bg);
-    color: var(--ink);
-    font-family: "Atkinson Hyperlegible", system-ui, sans-serif;
-    line-height: 1.55;
-    min-height: 100vh;
-  }
-  header {
-    background: #fff;
-    border-bottom: 1px solid var(--line);
-    padding: 14px 24px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-  .brand {
-    font-weight: 700;
-    color: var(--ink);
-    text-decoration: none;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  .brand .logo {
-    display: grid; place-items: center;
-    background: var(--ink); color: #fff;
-    border-radius: 8px; width: 30px; height: 30px;
-    font-family: "Bricolage Grotesque", sans-serif;
-    font-size: 17px;
-  }
-  nav.header-nav { display: flex; gap: 14px; align-items: center; font-size: 14px; }
-  nav.header-nav a { color: var(--muted); text-decoration: none; font-weight: 700; }
-  nav.header-nav a:hover { color: var(--ink); }
-
-  main {
-    max-width: 760px;
-    margin: 32px auto 60px;
-    padding: 0 20px;
-  }
-
-  h1 { font-size: clamp(26px, 3.2vw, 36px); margin: 0 0 8px; letter-spacing: -.03em; }
-  p.subtitle { color: var(--muted); margin: 0 0 24px; font-size: 16px; }
-
-  .card {
-    background: var(--surface);
-    border: 1px solid var(--line);
-    border-radius: 16px;
-    padding: 24px;
-    margin-bottom: 20px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.02);
-  }
-
-  label { display: block; font-size: 13px; font-weight: 700; margin-bottom: 6px; color: var(--muted); }
-  input, textarea, select {
-    font: inherit; width: 100%; border: 1px solid var(--line); border-radius: 8px;
-    padding: 10px 12px; margin-bottom: 14px; color: var(--ink); background: var(--bg);
-  }
-  input:focus, textarea:focus, select:focus { background: #fff; outline: 2px solid var(--orange); }
-
-  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-  @media (max-width: 580px) { .row { grid-template-columns: 1fr; } }
-
-  .btn {
-    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-    background: var(--ink); color: #fff; border: 0; border-radius: 24px;
-    padding: 12px 22px; font-weight: 700; font-size: 14px; cursor: pointer;
-    text-decoration: none; transition: background .15s, transform .1s;
-  }
-  .btn:hover { background: #264364; }
-  .btn:active { transform: scale(0.98); }
-  .btn.orange { background: var(--orange); }
-  .btn.orange:hover { background: #8e3717; }
-  .btn.secondary { background: #f0eee9; color: var(--ink); border: 1px solid var(--line); }
-  .btn.secondary:hover { background: #e5e2dc; }
-  .btn:disabled { opacity: .55; cursor: not-allowed; }
-
-  /* Progress bar */
-  .progress-wrap { margin-bottom: 20px; }
-  .progress-info { display: flex; justify-content: space-between; font-size: 13px; font-weight: 700; margin-bottom: 6px; color: var(--muted); }
-  .progress-bar { height: 8px; background: var(--line); border-radius: 4px; overflow: hidden; }
-  .progress-fill { height: 100%; background: var(--orange); transition: width .3s ease; }
-
-  /* Question box */
-  .recruiter-box {
-    background: #f7f6f3;
-    border-left: 4px solid var(--orange);
-    border-radius: 0 12px 12px 0;
-    padding: 18px 20px;
-    margin-bottom: 20px;
-  }
-  .recruiter-label {
-    display: flex; justify-content: space-between; align-items: center;
-    font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--orange);
-    margin-bottom: 8px;
-  }
-  .question-text { font-size: 20px; font-weight: 700; line-height: 1.4; margin: 0; color: var(--ink); }
-  .speak-btn {
-    background: none; border: 0; cursor: pointer; color: var(--muted); font-size: 13px; font-weight: 700;
-    display: inline-flex; align-items: center; gap: 4px; padding: 0;
-  }
-  .speak-btn:hover { color: var(--orange); }
-
-  /* Answer input */
-  .answer-actions {
-    display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 10px;
-  }
-  .mic-btn {
-    border-radius: 50%; width: 44px; height: 44px; border: 0;
-    background: var(--accent); color: #fff; display: grid; place-items: center;
-    cursor: pointer; transition: background .15s;
-  }
-  .mic-btn.recording { background: var(--rec); animation: pulse 1.6s ease-out infinite; }
-  .mic-btn svg { width: 22px; height: 22px; fill: currentColor; }
-  @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(229,56,59,.45); } 100% { box-shadow: 0 0 0 16px rgba(229,56,59,0); } }
-
-  /* Coach feedback */
-  .feedback-box {
-    margin-top: 24px;
-    background: #fff;
-    border: 1px solid #e1dbd2;
-    border-radius: 12px;
-    padding: 20px;
-  }
-  .feedback-header {
-    display: flex; align-items: center; gap: 8px;
-    font-size: 14px; font-weight: 700; color: var(--success);
-    margin-bottom: 12px; text-transform: uppercase; letter-spacing: .05em;
-  }
-  .feedback-content {
-    white-space: pre-wrap;
-    font-size: 15px;
-    line-height: 1.65;
-    color: var(--ink);
-  }
-
-  [hidden] { display: none !important; }
-</style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Simulez un entretien d’embauche en français ou en anglais et améliorez vos réponses.">
+  <title>Entraînement · Copilote Entretien</title>
+  <link rel="stylesheet" href="/ui.css">
+  <link rel="manifest" href="/manifest.webmanifest">
 </head>
-<body>
-
-<header>
-  <a class="brand" href="/index.html">
-    <span class="logo">c</span>
-    <span>Copilote Entretien</span>
-  </a>
-  <nav class="header-nav">
-    <a href="/index.html">Mode Live</a>
-    <a href="/compte.html">Mon espace</a>
-  </nav>
-</header>
-
-<main>
-  <!-- Écran de configuration / départ -->
-  <section id="setupSection" class="card">
-    <h1>Mode Entraînement</h1>
-    <p class="subtitle">Simulez un entretien réel face à un recruteur IA. Répondez à l’oral ou à l’écrit, et recevez immédiatement les conseils personnalisés d'un coach.</p>
-
-    <div class="row">
-      <div>
-        <label for="role">Poste ciblé</label>
-        <input id="role" placeholder="Ex. Acheteur junior, Développeur Full-Stack...">
+<body class="app-page">
+  <header class="app-header">
+    <a class="app-brand" href="/"><span aria-hidden="true">c</span> Copilote Entretien</a>
+    <nav aria-label="Navigation principale"><a href="/dashboard.html#mock">Tableau de bord</a><a href="/compte.html">Mon espace</a><a href="/index.html">Copilote</a></nav>
+  </header>
+  <main class="app-wrap narrow">
+    <p class="eyebrow">Simulation personnalisée</p>
+    <p data-trial class="trial-bar" hidden><span role="status"></span><time aria-hidden="true" hidden></time><a hidden></a></p>
+    <p id="practice-status" class="notice" role="status" tabindex="-1"></p>
+    <section id="setup">
+      <h1>Entraînez-vous à l’entretien</h1>
+      <p class="intro-copy page-lead">Répondez à des questions adaptées au poste. Le débrief vous montre quoi améliorer avant de recommencer.</p>
+      <form class="surface" id="setup-form">
+        <div class="field-grid">
+          <label>Poste visé<input name="role" maxlength="200"></label>
+          <label>Entreprise<input name="company" maxlength="200"></label>
+        </div>
+        <label>Offre d’emploi<textarea name="offer" rows="4" maxlength="16000"></textarea></label>
+        <label>Importer mon CV (PDF ou TXT)<input id="practice-cv" type="file" accept=".pdf,.txt,application/pdf,text/plain" aria-describedby="cv-import-status"></label>
+        <p id="cv-import-status" class="field-hint" role="status">Connectez-vous pour importer un CV. Son texte sera utilisé dans votre simulation. Pour Word, exportez en PDF ou TXT.</p>
+        <label>Texte du CV utilisé pour la simulation<textarea name="profile" rows="6" maxlength="50000"></textarea></label>
+        <div class="field-grid">
+          <label>Format<select name="total"><option value="3">3 questions</option><option value="5">5 questions</option></select></label>
+          <label>Langue<select name="language"><option value="fr">Français</option><option value="en">Anglais</option><option value="es">Espagnol</option><option value="de">Allemand</option></select></label>
+        </div>
+        <div class="toolbar"><button class="action">Commencer</button><a class="text-action" href="/demo.html">Essayer la démo sans compte</a></div>
+      </form>
+    </section>
+    <section class="surface" id="run" hidden aria-labelledby="step">
+      <div class="toolbar">
+        <h1 id="step" tabindex="-1">Simulation</h1>
+        <button id="back" class="action secondary" type="button">Sauvegarder et quitter</button>
       </div>
-      <div>
-        <label for="company">Entreprise</label>
-        <input id="company" placeholder="Ex. Decathlon, Doctolib...">
+      <progress id="progress" max="3" value="0" aria-label="Progression de la simulation"></progress>
+      <div class="practice-question">
+        <h2 id="question" tabindex="-1">Le recruteur prépare sa question…</h2>
+        <div class="toolbar">
+          <button id="speak" type="button" class="action secondary" hidden>Écouter la question</button>
+          <button id="question-retry" type="button" class="action secondary" hidden>Réessayer</button>
+        </div>
       </div>
-    </div>
-
-    <label for="profile">Profil et expériences du candidat</label>
-    <textarea id="profile" rows="5" placeholder="Collez votre CV ou vos réalisations clés..."></textarea>
-
-    <label for="offer">Offre d’emploi (facultatif mais recommandé)</label>
-    <textarea id="offer" rows="4" placeholder="Collez ici les missions et compétences de l’offre..."></textarea>
-
-    <div class="row">
-      <div>
-        <label for="numQuestions">Nombre de questions</label>
-        <select id="numQuestions">
-          <option value="3">Simulation courte (3 questions)</option>
-          <option value="5" selected>Entretien complet (5 questions)</option>
-        </select>
-      </div>
-      <div>
-        <label for="langSelect">Langue de l'entretien</label>
-        <select id="langSelect">
-          <option value="fr" selected>Français</option>
-          <option value="en">Anglais</option>
-        </select>
-      </div>
-    </div>
-
-    <button id="startBtn" class="btn orange" style="width: 100%; margin-top: 10px;">Commencer la simulation ✦</button>
-  </section>
-
-  <!-- Écran de simulation actif -->
-  <section id="interviewSection" class="card" hidden>
-    <div class="progress-wrap">
-      <div class="progress-info">
-        <span id="stepLabel">Question 1 / 5</span>
-        <span id="targetLabel">Recruteur</span>
-      </div>
-      <div class="progress-bar">
-        <div id="progressFill" class="progress-fill" style="width: 20%;"></div>
-      </div>
-    </div>
-
-    <!-- Question du recruteur -->
-    <div class="recruiter-box">
-      <div class="recruiter-label">
-        <span>Question du recruteur</span>
-        <button id="speakBtn" class="speak-btn" type="button" title="Écouter la question à voix haute">
-          🔊 Écouter
-        </button>
-      </div>
-      <p id="questionText" class="question-text">Chargement de la question...</p>
-    </div>
-
-    <!-- Réponse du candidat -->
-    <div>
-      <label for="candidateAnswer">Votre réponse (parlez au micro ou écrivez) :</label>
-      <textarea id="candidateAnswer" rows="4" placeholder="Cliquez sur le micro pour parler, ou saisissez directement votre réponse ici..."></textarea>
-      
-      <div class="answer-actions">
-        <button id="micBtn" class="mic-btn" type="button" title="Enregistrer ma réponse">
-          <svg viewBox="0 0 24 24"><path d="M12 14a3.5 3.5 0 0 0 3.5-3.5v-5a3.5 3.5 0 0 0-7 0v5A3.5 3.5 0 0 0 12 14Zm6-3.5a1 1 0 1 0-2 0 4 4 0 0 1-8 0 1 1 0 1 0-2 0 6 6 0 0 0 5 5.91V19H9.5a1 1 0 1 0 0 2h5a1 1 0 1 0 0-2H13v-2.59A6 6 0 0 0 18 10.5Z"/></svg>
-        </button>
-        <span id="micStatus" style="font-size: 13px; color: var(--muted);">Cliquer sur le micro pour dicter</span>
-        <div style="flex: 1;"></div>
-        <button id="submitAnswerBtn" class="btn orange" type="button">Analyser ma réponse ✦</button>
-      </div>
-    </div>
-
-    <!-- Feedback du coach -->
-    <div id="feedbackBox" class="feedback-box" hidden>
-      <div class="feedback-header">
-        <span>✦ Débriefing du coach</span>
-      </div>
-      <div id="feedbackContent" class="feedback-content"></div>
-      <div style="margin-top: 18px; display: flex; justify-content: flex-end;">
-        <button id="nextQuestionBtn" class="btn" type="button">Question suivante →</button>
-      </div>
-    </div>
-  </section>
-
-  <!-- Écran de fin de simulation -->
-  <section id="endSection" class="card" hidden style="text-align: center; padding: 40px 24px;">
-    <h1>Félicitations pour cet entraînement ! 🎉</h1>
-    <p class="subtitle" style="max-width: 520px; margin: 10px auto 26px;">
-      Vous avez terminé votre simulation d'entretien. L'entraînement régulier vous permet de structurer vos réponses, de gagner en naturel et de retenir les chiffres clés de votre parcours.
-    </p>
-    <div style="display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;">
-      <button id="restartBtn" class="btn orange" type="button">Relancer une simulation</button>
-      <a href="/index.html" class="btn secondary">Ouvrir le copilote en direct</a>
-    </div>
-  </section>
-</main>
-
-<script>
-(() => {
-  const $ = (id) => document.getElementById(id);
-
-  // Éléments UI
-  const setupSection = $("setupSection");
-  const interviewSection = $("interviewSection");
-  const endSection = $("endSection");
-  const startBtn = $("startBtn");
-  const roleInput = $("role");
-  const companyInput = $("company");
-  const profileInput = $("profile");
-  const offerInput = $("offer");
-  const numQuestionsSelect = $("numQuestions");
-  const langSelect = $("langSelect");
-
-  const stepLabel = $("stepLabel");
-  const targetLabel = $("targetLabel");
-  const progressFill = $("progressFill");
-  const questionText = $("questionText");
-  const speakBtn = $("speakBtn");
-  const candidateAnswer = $("candidateAnswer");
-  const micBtn = $("micBtn");
-  const micStatus = $("micStatus");
-  const submitAnswerBtn = $("submitAnswerBtn");
-  const feedbackBox = $("feedbackBox");
-  const feedbackContent = $("feedbackContent");
-  const nextQuestionBtn = $("nextQuestionBtn");
-  const restartBtn = $("restartBtn");
-
-  // Mot de passe APP_PASSWORD
-  const PWD_KEY = "interview-copilot:app-password";
-  function authFetch(url, options = {}) {
-    const headers = new Headers(options.headers || {});
-    const pwd = localStorage.getItem(PWD_KEY) || "";
-    if (pwd) headers.set("x-app-password", pwd);
-    return fetch(url, { ...options, headers });
-  }
-
-  // État de la simulation
-  let currentIndex = 1;
-  let totalQuestions = 5;
-  let history = []; // { q: string, a: string }
-  let currentQuestion = "";
-  let isRecording = false;
-  let mediaRecorder = null;
-  let audioChunks = [];
-  let audioStream = null;
-
-  // Pré-remplir avec les données du compte ou de localStorage
-  async function loadInitialContext() {
-    try {
-      const [meRes, prepRes, resumesRes] = await Promise.all([
-        authFetch("/api/account/me"),
-        authFetch("/api/account/preparation"),
-        authFetch("/api/account/resumes"),
-      ]);
-      if (meRes.ok && prepRes.ok) {
-        const user = await meRes.json();
-        const prep = await prepRes.json();
-        const resumes = resumesRes.ok ? await resumesRes.json() : [];
-        const resume = resumes.find((r) => r.id === prep.resume_id);
-        const fullProfile = [
-          resume?.content,
-          user.goals && `Métiers : ${user.goals}`,
-          user.salary && `Salaire : ${user.salary}`,
-          user.notes,
-          prep.notes,
-        ].filter(Boolean).join("\n\n");
-
-        if (prep.role) roleInput.value = prep.role;
-        if (prep.company) companyInput.value = prep.company;
-        if (prep.offer) offerInput.value = prep.offer;
-        if (fullProfile) profileInput.value = fullProfile;
-        return;
-      }
-    } catch {}
-
-    // Fallback localStorage
-    try {
-      const local = JSON.parse(localStorage.getItem("interview-copilot:v1") || "{}");
-      if (local.role) roleInput.value = local.role;
-      if (local.company) companyInput.value = local.company;
-      if (local.profile) offerInput.value = local.profile;
-    } catch {}
-  }
-  loadInitialContext();
-
-  function getContext() {
-    return {
-      role: roleInput.value.trim(),
-      company: companyInput.value.trim(),
-      profile: profileInput.value.trim(),
-      offer: offerInput.value.trim(),
-      language: langSelect.value,
-    };
-  }
-
-  // Démarrer la simulation
-  startBtn.addEventListener("click", async () => {
-    totalQuestions = Number(numQuestionsSelect.value) || 5;
-    currentIndex = 1;
-    history = [];
-
-    setupSection.hidden = true;
-    endSection.hidden = true;
-    interviewSection.hidden = false;
-
-    targetLabel.textContent = companyInput.value.trim() ? `Recruteur @ ${companyInput.value.trim()}` : "Recruteur";
-    await fetchNextQuestion();
-  });
-
-  // Récupérer la question suivante
-  async function fetchNextQuestion() {
-    stepLabel.textContent = `Question ${currentIndex} / ${totalQuestions}`;
-    progressFill.style.width = `${Math.round((currentIndex / totalQuestions) * 100)}%`;
-
-    questionText.textContent = "Le recruteur prépare sa question...";
-    candidateAnswer.value = "";
-    feedbackBox.hidden = true;
-    feedbackContent.textContent = "";
-    submitAnswerBtn.disabled = true;
-
-    try {
-      const res = await authFetch("/api/training/question", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          context: getContext(),
-          history,
-          questionIndex: currentIndex,
-          totalQuestions,
-        }),
-      });
-
-      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Erreur de génération.");
-      const data = await res.json();
-      currentQuestion = data.question || "Pouvez-vous vous présenter et expliquer votre parcours ?";
-      questionText.textContent = currentQuestion;
-      submitAnswerBtn.disabled = false;
-
-      // Lecture vocale automatique de la question
-      speakText(currentQuestion);
-    } catch (err) {
-      questionText.textContent = "Erreur lors de la préparation de la question. Veuillez réessayer.";
-      submitAnswerBtn.disabled = false;
-    }
-  }
-
-  // Synthèse vocale de la question
-  function speakText(text) {
-    if (!window.speechSynthesis) return;
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = langSelect.value === "en" ? "en-US" : "fr-FR";
-    window.speechSynthesis.speak(utterance);
-  }
-  speakBtn.addEventListener("click", () => {
-    if (currentQuestion) speakText(currentQuestion);
-  });
-
-  // Capture audio micro pour la réponse
-  micBtn.addEventListener("click", async () => {
-    if (isRecording) {
-      stopRecording();
-    } else {
-      await startRecording();
-    }
-  });
-
-  async function startRecording() {
-    try {
-      micStatus.textContent = "Demande d'accès au micro...";
-      audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      audioChunks = [];
-      const mime = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"].find((m) => MediaRecorder.isTypeSupported(m));
-      mediaRecorder = new MediaRecorder(audioStream, mime ? { mimeType: mime } : undefined);
-
-      mediaRecorder.ondataavailable = (e) => {
-        if (e.data.size) audioChunks.push(e.data);
-      };
-
-      mediaRecorder.onstop = onAudioStop;
-      mediaRecorder.start();
-      isRecording = true;
-      micBtn.classList.add("recording");
-      micStatus.textContent = "Enregistrement en cours... Cliquez pour terminer.";
-    } catch (err) {
-      micStatus.textContent = "Accès au micro refusé ou indisponible.";
-      if (audioStream) audioStream.getTracks().forEach((t) => t.stop());
-    }
-  }
-
-  function stopRecording() {
-    if (mediaRecorder && mediaRecorder.state !== "inactive") {
-      micStatus.textContent = "Transcription en cours...";
-      mediaRecorder.stop();
-    }
-    if (audioStream) audioStream.getTracks().forEach((t) => t.stop());
-    isRecording = false;
-    micBtn.classList.remove("recording");
-  }
-
-  async function onAudioStop() {
-    try {
-      const blob = new Blob(audioChunks, { type: mediaRecorder.mimeType || "audio/webm" });
-      if (blob.size < 3000) {
-        micStatus.textContent = "Audio trop court. Réessayez.";
-        return;
-      }
-
-      const form = new FormData();
-      form.append("audio", blob, "reponse.webm");
-      form.append("language", langSelect.value);
-
-      const res = await authFetch("/api/transcribe", { method: "POST", body: form });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.text) throw new Error(data.error || "Échec de transcription.");
-
-      const transcribed = data.text.trim();
-      candidateAnswer.value = candidateAnswer.value ? candidateAnswer.value + " " + transcribed : transcribed;
-      micStatus.textContent = "Transcription insérée. Vous pouvez la modifier ou l'analyser.";
-    } catch (err) {
-      micStatus.textContent = err.message || "Erreur de transcription audio.";
-    }
-  }
-
-  // Analyser la réponse (streaming du feedback)
-  submitAnswerBtn.addEventListener("click", async () => {
-    const answer = candidateAnswer.value.trim();
-    if (!answer) {
-      alert("Veuillez saisir ou dicter une réponse avant d'analyser.");
-      return;
-    }
-
-    submitAnswerBtn.disabled = true;
-    feedbackBox.hidden = false;
-    feedbackContent.textContent = "Le coach analyse votre réponse...";
-    nextQuestionBtn.hidden = true;
-
-    try {
-      const res = await authFetch("/api/training/feedback", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          question: currentQuestion,
-          answer,
-          context: getContext(),
-        }),
-      });
-
-      if (!res.ok) throw new Error("Erreur de génération du feedback.");
-
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let fullFeedback = "";
-
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        fullFeedback += decoder.decode(value, { stream: true });
-        feedbackContent.textContent = fullFeedback;
-      }
-
-      history.push({ q: currentQuestion, a: answer });
-      nextQuestionBtn.hidden = false;
-      submitAnswerBtn.disabled = false;
-      nextQuestionBtn.textContent = currentIndex < totalQuestions ? "Question suivante →" : "Terminer la simulation ✦";
-    } catch (err) {
-      feedbackContent.textContent = "Impossible d'analyser la réponse pour le moment.";
-      submitAnswerBtn.disabled = false;
-      nextQuestionBtn.hidden = false;
-    }
-  });
-
-  // Question suivante ou fin
-  nextQuestionBtn.addEventListener("click", async () => {
-    if (currentIndex < totalQuestions) {
-      currentIndex++;
-      await fetchNextQuestion();
-    } else {
-      interviewSection.hidden = true;
-      endSection.hidden = false;
-    }
-  });
-
-  restartBtn.addEventListener("click", () => {
-    endSection.hidden = true;
-    setupSection.hidden = false;
-  });
-})();
-</script>
-
+      <form id="answer-form" hidden>
+        <label>Votre réponse<textarea id="answer" maxlength="6000" rows="5" required></textarea></label>
+        <div class="toolbar">
+          <button id="mic" class="action secondary" type="button" aria-pressed="false">Dicter ma réponse</button>
+          <button class="action">Analyser ma réponse</button>
+        </div>
+        <p id="audio-status" class="field-hint" role="status">La dictée envoie l’audio au service de transcription.</p>
+      </form>
+      <section id="feedback" hidden aria-label="Débrief"></section>
+      <button id="next" type="button" class="action" hidden>Question suivante</button>
+    </section>
+    <section class="surface" id="historique" aria-labelledby="history-title">
+      <h2 id="history-title">Vos simulations</h2>
+      <p class="field-hint" id="history-status" role="status"></p>
+      <div id="trends" hidden></div>
+      <ul class="record-list" id="history-list"></ul>
+    </section>
+  </main>
+  <footer class="app-wrap site-footer"><nav class="toolbar" aria-label="Liens utiles"><a class="text-action" href="/">Accueil</a><a class="text-action" href="/compte.html">Mon espace</a><a class="text-action" href="/confidentialite.html">Confidentialité</a></nav></footer>
+  <script type="module" src="/entrainement.js"></script>
 </body>
 </html>

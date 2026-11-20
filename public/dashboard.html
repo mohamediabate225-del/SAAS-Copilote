@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <meta name="theme-color" content="#132f35" />
+    <title>Mon espace · Copilote Entretien</title>
+    <link rel="icon" href="/copilote.svg" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="stylesheet" href="/ui.css" />
+    <link rel="stylesheet" href="/espace.css" />
+  </head>
+  <body class="desk">
+    <a class="skip" href="#view">Aller au contenu</a>
+    <main id="onboard" class="onboard" hidden>
+      <div>
+        <a class="brand" href="/"
+          ><img src="/copilote.svg" alt="" width="32" height="32" />Copilote
+          Entretien</a
+        >
+        <p id="step"></p>
+        <h1 id="question"></h1>
+        <p id="hint"></p>
+        <div id="choices" class="chips"></div>
+        <button class="plain" id="previous" hidden>Retour</button>
+      </div>
+    </main>
+    <div id="shell" class="shell" hidden>
+      <aside id="rail">
+        <a class="brand" href="/"
+          ><img src="/copilote.svg" alt="" width="32" height="32" />Copilote
+          Entretien</a
+        >
+        <nav aria-label="Espace candidat">
+          <p>Assistant d’entretien</p>
+          <button data-create="interview"><i>＋</i>Créer une session</button
+          ><a href="#sessions"><i>≋</i>Sessions d’appel</a
+          ><a href="#resumes"><i>▤</i>Mes CV</a
+          ><a href="#documents"><i>▱</i>Documents</a>
+          <p>Préparation</p>
+          <a href="#mock"><i>◉</i>Entretien blanc</a
+          ><a href="#maker"><i>✎</i>Éditeur de CV</a
+          ><a href="#portraits"><i>▧</i>Portraits pro</a>
+        </nav>
+        <div class="rail-foot">
+          <div class="plan">
+            <strong id="credits"></strong><small>Essai IA de 10 minutes</small
+            ><a href="/tarifs.html">Voir mon offre</a>
+          </div>
+          <a href="/compte.html" id="account"></a
+          ><button class="plain" id="logout">Se déconnecter</button>
+        </div>
+      </aside>
+      <div class="main">
+        <header class="bar">
+          <button
+            class="mobile"
+            id="menu"
+            aria-expanded="false"
+            aria-controls="rail"
+          >
+            Menu</button
+          ><strong id="sectionTitle"></strong
+          ><button class="primary" data-create="interview">
+            ＋ Créer une session
+          </button>
+        </header>
+        <main id="view" class="view" tabindex="-1"></main>
+      </div>
+    </div>
+    <dialog id="wizard">
+      <form id="newSession">
+        <aside>
+          <h2>Créer une session</h2>
+          <p>Préparez votre prochain échange.</p>
+          <ol>
+            <li id="detailsStep">Détails</li>
+            <li id="prefsStep">Préférences</li>
+          </ol>
+        </aside>
+        <div class="dialog-body">
+          <button type="button" class="close" data-close aria-label="Fermer">
+            ×
+          </button>
+          <section id="details">
+            <h3>Type de session</h3>
+            <div class="segments">
+              <label
+                ><input
+                  type="radio"
+                  name="type"
+                  value="interview"
+                  checked
+                />Entretien</label
+              ><label
+                ><input type="radio" name="type" value="regular" />Appel</label
+              ><label
+                ><input
+                  type="radio"
+                  name="type"
+                  value="mock"
+                />Simulation</label
+              >
+            </div>
+            <label
+              >Lien de l’offre
+              <div class="row">
+                <input
+                  name="job_url"
+                  type="url"
+                  placeholder="https://…"
+                  aria-label="Lien de l’offre"
+                /><button type="button" id="importJob">Importer</button>
+              </div></label
+            >
+            <div class="cols">
+              <label>Entreprise<input name="company" maxlength="200" /></label
+              ><label>Poste visé<input name="role" maxlength="200" /></label>
+            </div>
+            <label
+              >Description du poste<textarea
+                name="offer"
+                rows="4"
+                maxlength="16000"
+              ></textarea>
+            </label>
+            <label>CV<select name="resume_id"></select></label
+            ><label class="upload-small"
+              >Ajouter un CV<input
+                id="wizardResume"
+                type="file"
+                accept=".pdf,.txt"
+            /></label>
+            <fieldset>
+              <legend>Documents complémentaires</legend>
+              <div id="documentChoices"></div>
+              <label class="upload-small"
+                >Ajouter un document<input
+                  id="wizardDocument"
+                  type="file"
+                  accept=".pdf,.txt"
+              /></label>
+            </fieldset>
+          </section>
+          <section id="prefs" hidden>
+            <h3>Préférences de session</h3>
+            <div class="cols">
+              <label
+                >Langue<select name="language">
+                  <option value="fr">Français</option>
+                  <option value="en">Anglais</option>
+                  <option value="es">Espagnol</option>
+                  <option value="de">Allemand</option>
+                </select></label
+              ><label>Modèle IA<select name="model"></select></label>
+            </div>
+            <label
+              >Style des réponses<select name="style">
+                <option value="concise">Concis</option>
+                <option value="detailed">Détaillé</option>
+                <option value="bullets">Points clés</option>
+              </select></label
+            ><label
+              >Instructions pour l’IA<textarea
+                name="instructions"
+                rows="3"
+                maxlength="3000"
+                placeholder="Ex. Réponds à la première personne."
+              ></textarea>
+            </label>
+            <label id="questionCount"
+              >Nombre de questions<select name="total">
+                <option>3</option>
+                <option>5</option>
+              </select></label
+            >
+            <div id="livePrefs">
+              <label class="check"
+                ><input type="checkbox" name="auto_answer" />Réponses
+                automatiques</label
+              ><label class="check"
+                ><input type="checkbox" name="save_transcript" />Conserver la
+                transcription</label
+              ><label class="check"
+                ><input type="checkbox" name="web" />Autoriser la recherche sur
+                Internet pour les questions générales</label
+              >
+            </div>
+          </section>
+          <p id="wizardStatus" role="status"></p>
+          <footer>
+            <button type="button" id="back">Annuler</button
+            ><button class="primary" id="next">Suivant</button>
+          </footer>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="platform" class="platform">
+      <button class="close" data-close aria-label="Fermer">×</button>
+      <h2>Où ouvrir la session ?</h2>
+      <p>Choisissez votre espace de travail.</p>
+      <button id="desktop" class="primary">Application de bureau</button
+      ><a id="browser" class="button">Ouvrir dans le navigateur</a>
+      <p id="installHint" role="status"></p>
+    </dialog>
+    <p id="notice" role="status" class="notice"></p>
+    <script type="module" src="/dashboard.js"></script>
+    <script src="/install.js" defer></script>
+  </body>
+</html>

@@ -1,1 +1,22 @@
-<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Mot de passe — Copilote Entretien</title><style>body{font:16px/1.5 Arial;background:#faf8f5;color:#172d45;margin:0}main{max-width:480px;margin:60px auto;padding:24px}form{background:#fff;border:1px solid #e7e2dd;border-radius:20px;padding:24px}label{display:block;font-weight:bold;margin:16px 0}input{box-sizing:border-box;width:100%;padding:12px;margin-top:8px;border:1px solid #cfd5d8;border-radius:8px;font:inherit}button{background:#172d45;color:white;border:0;border-radius:24px;padding:14px 20px;font-weight:bold;cursor:pointer}a{color:#172d45}[hidden]{display:none!important}#status{line-height:1.5}:focus-visible{outline:3px solid #a7431f;outline-offset:3px}</style></head><body><main><a href="/compte.html">← Retour à la connexion</a><h1>Mot de passe oublié ?</h1><form id="request"><p>Indiquez votre adresse email pour recevoir un lien de réinitialisation.</p><label>Adresse email<input name="email" type="email" autocomplete="email" required></label><button>Envoyer le lien</button></form><form id="reset" hidden><p>Choisissez votre nouveau mot de passe.</p><label>Nouveau mot de passe<input name="password" type="password" minlength="10" maxlength="200" autocomplete="new-password" required></label><label>Confirmer le mot de passe<input name="password_confirmation" type="password" minlength="10" maxlength="200" autocomplete="new-password" required></label><button>Modifier le mot de passe</button></form><p id="status" role="status" aria-live="polite"></p></main><script src="/mot-de-passe.js"></script></body></html>
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Mot de passe · Copilote Entretien</title>
+  <link rel="stylesheet" href="/ui.css">
+<link rel="stylesheet" href="/espace.css"></head>
+<body class="desk auth"><main class="signin"><a href="/" class="brand"><img src="/copilote.svg" width="34" height="34" alt="">Copilote Entretien</a><section class="card"><h1 id="reset-title">Mot de passe oublié ?</h1><p id="status" role="status" tabindex="-1"></p><form class="form-stack" id="request">
+      <p>Indiquez votre adresse email pour recevoir un lien de réinitialisation.</p>
+      <label>Adresse email<input name="email" type="email" autocomplete="email" required></label>
+      <button class="action">Envoyer le lien</button>
+    </form>
+    <form class="form-stack" id="reset" hidden>
+      <label>Nouveau mot de passe<input name="password" type="password" minlength="10" maxlength="200" autocomplete="new-password" aria-describedby="password-hint" required></label>
+      <p class="field-hint" id="password-hint">Au moins 10 caractères.</p>
+      <label>Confirmer le mot de passe<input name="password_confirmation" type="password" minlength="10" maxlength="200" autocomplete="new-password" required></label>
+      <button class="action">Modifier le mot de passe</button>
+    </form>
+  <a href="/connexion.html">Retour à la connexion</a></section></main><script type="module" src="/mot-de-passe.js"></script>
+</body>
+</html>

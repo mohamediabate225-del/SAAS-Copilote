@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Testez une question d’entretien et comparez votre réponse à un exemple, sans compte.">
+  <title>Démo gratuite · Copilote Entretien</title>
+  <link rel="stylesheet" href="/ui.css">
+  <link rel="manifest" href="/manifest.webmanifest">
+</head>
+<body class="app-page">
+  <header class="app-header">
+    <a class="app-brand" href="/"><span aria-hidden="true">c</span> Copilote Entretien</a>
+    <nav aria-label="Navigation principale"><a href="/entrainement.html">Entraînement</a><a href="/tarifs.html">Offres</a><a href="/compte.html">Mon espace</a></nav>
+  </header>
+  <main class="app-wrap narrow">
+    <p class="eyebrow">Sans compte · Sans enregistrement</p>
+    <h1>Essayez une question d’entretien</h1>
+    <p class="intro-copy page-lead">Cet exercice se déroule dans votre navigateur. Il utilise des exemples préparés. Votre réponse reste dans cette page.</p>
+    <form class="surface" id="demo-form">
+      <label>Type de question<select id="demo-topic"><option value="presentation">Présentation</option><option value="situation">Mise en situation</option><option value="achats">Achats et supply chain</option></select></label>
+      <h2 id="demo-question">Pouvez-vous vous présenter en une minute ?</h2>
+      <label>Votre réponse<textarea id="demo-response" rows="5" maxlength="2500" required></textarea></label>
+      <button class="action">Comparer avec un exemple</button>
+    </form>
+    <section id="demo-result" class="surface" hidden tabindex="-1" aria-labelledby="demo-title">
+      <h2 id="demo-title">Exemple et pistes de relecture</h2>
+      <p id="demo-example"></p>
+      <ul id="demo-notes"></ul>
+      <a class="action" href="/compte.html?retour=%2Fentrainement.html">Tester une simulation IA</a>
+    </section>
+  </main>
+  <footer class="app-wrap site-footer"><nav class="toolbar" aria-label="Liens utiles"><a class="text-action" href="/">Accueil</a><a class="text-action" href="/tarifs.html">Essai IA</a><a class="text-action" href="/confidentialite.html">Confidentialité</a></nav></footer>
+  <script type="module" src="/demo.js"></script>
+  <script type="module" src="/install.js"></script>
+</body>
+</html>

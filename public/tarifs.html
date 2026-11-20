@@ -1,1 +1,40 @@
-<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Tarifs — Copilote Entretien</title><style>body{font:16px/1.7 Arial;background:#faf8f5;color:#172d45;max-width:760px;margin:50px auto;padding:0 24px}a{color:#172d45}.card{background:white;border:1px solid #e5e2dc;border-radius:20px;padding:28px;margin:20px 0}.price{font-size:40px;font-weight:bold}.muted{color:#586574}</style></head><body><a href="/">← Accueil</a><h1>Une offre claire, pour vous préparer.</h1><p class="muted">Proposition de tarification — les paiements ne sont pas encore disponibles.</p><div class="card"><h2>Copilote Entretien</h2><div class="price">30 € <small style="font-size:16px;font-weight:normal">/ mois</small></div><p>Profil, plusieurs CV et préparation personnalisée. Un quota de minutes d’entretien sera défini après mesure des coûts réels.</p><p>Des crédits supplémentaires à l’usage sont envisagés. Prix et durée restent à fixer.</p><a href="/compte.html">Créer mon espace →</a></div></body></html>
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Découvrez l’essai et les offres de Copilote Entretien.">
+  <title>Offres · Copilote Entretien</title>
+  <link rel="stylesheet" href="/ui.css">
+  <link rel="manifest" href="/manifest.webmanifest">
+</head>
+<body class="app-page">
+  <header class="app-header">
+    <a class="app-brand" href="/"><span aria-hidden="true">c</span> Copilote Entretien</a>
+    <nav aria-label="Navigation principale"><a href="/entrainement.html">Entraînement</a><a href="/tarifs.html">Offres</a><a href="/compte.html">Mon espace</a></nav>
+  </header>
+  <main class="app-wrap">
+    <p class="eyebrow">Des options claires pour commencer</p>
+    <h1>Choisissez votre accès</h1>
+    <p class="page-lead">Essayez d’abord l’exercice guidé, puis créez un compte si vous souhaitez personnaliser vos simulations avec l’IA.</p>
+    <div class="auth-grid">
+      <section class="surface">
+        <p class="eyebrow">Pour découvrir</p>
+        <h2>Démo gratuite</h2>
+        <p>Répondez à une question type et comparez votre réponse à un exemple.</p>
+        <a class="action secondary" href="/demo.html">Ouvrir la démo</a>
+      </section>
+      <section class="surface">
+        <p class="eyebrow">Pour vous entraîner</p>
+        <h2>Essai IA de 10 minutes</h2>
+        <p>Testez la simulation et le copilote. Le temps démarre à votre première utilisation de l’IA.</p>
+        <a class="action" href="/compte.html">Créer mon compte</a>
+      </section>
+    </div>
+    <p id="billing-status" class="notice" role="status" tabindex="-1"></p>
+    <section id="paid-plans" hidden><h2>Abonnements</h2><div class="auth-grid" id="plans"></div></section>
+  </main>
+  <footer class="app-wrap site-footer"><nav class="toolbar" aria-label="Liens utiles"><a class="text-action" href="/">Accueil</a><a class="text-action" href="/demo.html">Démo sans compte</a><a class="text-action" href="/confidentialite.html">Confidentialité</a></nav></footer>
+  <script type="module" src="/tarifs.js"></script>
+</body>
+</html>

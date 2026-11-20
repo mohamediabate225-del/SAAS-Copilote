@@ -4,17 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Copilote d’entretien</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg: #f5f6f8;
+    --bg: #faf8f5;
     --surface: #ffffff;
-    --ink: #14171f;
+    --ink: #172d45;
     --muted: #667085;
     --line: #dfe3ea;
-    --accent: #2447f5;
+    --accent: #0f766e;
     --rec: #e5383b;
     --focus: #14171f;
   }
@@ -23,7 +20,7 @@
   body {
     background: var(--bg);
     color: var(--ink);
-    font-family: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
     min-height: 100vh;
     display: flex;
     justify-content: center;
@@ -75,6 +72,7 @@
   .top-nav a { color: var(--muted); text-decoration: none; font-weight: 700; transition: color .15s; }
   .top-nav a:hover { color: var(--ink); }
   .top-nav .nav-right { display: flex; align-items: center; gap: 12px; }
+  .top-nav .nav-right, .card-head { flex-wrap: wrap; gap: 8px; }
   .top-nav .badge-link { background: #eef2ff; color: var(--accent); padding: 5px 12px; border-radius: 20px; text-decoration: none; font-weight: 700; }
   .top-nav .badge-link:hover { background: #dfe7ff; }
   .card-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
@@ -93,18 +91,23 @@
   #question:focus { background: #fff; border-color: var(--accent); }
   #answer { margin: 0; font-size: 26px; line-height: 1.5; white-space: pre-wrap; max-width: 62ch; }
   [hidden] { display: none !important; }
-</style>
+</style><link rel="stylesheet" href="/ui.css">
 </head>
 <body>
 <main>
   <nav class="top-nav" aria-label="Navigation secondaire">
-    <a href="/compte.html">← Mon espace</a>
+    <a class="app-brand" href="/"><span aria-hidden="true">c</span> Copilote Entretien</a>
     <div class="nav-right">
-      <a href="/entrainement.html" class="badge-link">🎯 Mode entraînement</a>
+      <a href="/entrainement.html" class="badge-link">Entraînement</a>
       <a href="/extension-guide.html">Extension</a>
-      <button id="pwdBtn" class="btn-action" style="font-size:12px;padding:3px 8px" type="button" title="Gérer le mot de passe de protection">🔒 Accès</button>
+      <button id="compact" class="btn-action" type="button" aria-pressed="false">Vue compacte</button>
     </div>
   </nav>
+  <p class="eyebrow">Assistant de réponse</p>
+  <h1>Copilote d’entretien</h1>
+  <p class="intro-copy">Préparez une réponse claire à partir du poste et de votre expérience.</p>
+  <p data-trial class="trial-bar" hidden><span role="status"></span><time aria-hidden="true" hidden></time><a hidden></a></p>
+  <p class="consent-note">Utilisez la capture audio uniquement avec l’accord des participants et lorsque les règles de l’entretien l’autorisent.</p>
 
   <details id="profile">
     <summary>Mon profil</summary>
@@ -117,6 +120,8 @@
           <input id="company" autocomplete="off" placeholder="Ex. Decathlon">
         </label>
       </div>
+      <label><span><input id="autoStop" type="checkbox" style="width:auto"> Terminer automatiquement après une pause</span></label>
+      <details id="serverAccess" hidden><summary>Paramètre technique avancé</summary><p class="field-hint">Uniquement si l’administrateur vous a fourni un mot de passe de serveur distinct de votre compte. Sinon, laissez ce réglage vide.</p><button id="pwdBtn" class="btn-action" type="button">Configurer la protection du serveur</button></details>
       <label>Offre d’emploi
         <textarea id="profileText" placeholder="Colle ici le texte de l’offre d’emploi."></textarea>
       </label>
@@ -149,250 +154,26 @@
     <p id="status" role="status" aria-live="polite">Appuie quand l’employeur commence à parler.</p>
   </section>
 
-  <section class="card" id="qCard" hidden>
+  <section class="card" id="qCard">
     <div class="card-head">
-      <h2>Question entendue <span style="font-size:12px;color:var(--muted);font-weight:normal">(modifiable)</span></h2>
-      <button id="retryBtn" class="btn-action" type="button" title="Relancer la génération de la réponse">Relancer la réponse ↺</button>
+      <h2><label for="question">Question de l’entretien</label></h2>
+      <button id="retryBtn" class="btn-action" type="button">Proposer une réponse</button>
     </div>
-    <textarea id="question" rows="2" placeholder="Question entendue..."></textarea>
+    <textarea id="question" rows="2" maxlength="2000" placeholder="Saisissez une question ou enregistrez-la."></textarea>
+    <p id="question-type" class="field-hint" hidden></p>
   </section>
   <section class="card" id="aCard" hidden>
     <h2>À dire</h2>
     <p id="answer" aria-live="polite"></p>
   </section>
+  <section class="card" id="live-history" hidden>
+    <h2>Questions et réponses de cette session</h2>
+    <ol id="live-turns"></ol>
+    <button id="clear-live" type="button" class="btn-action">Effacer la session locale</button>
+  </section>
 </main>
+<footer class="app-wrap site-footer"><nav class="toolbar" aria-label="Liens utiles"><a class="text-action" href="/">Accueil</a><a class="text-action" href="/entrainement.html">Entraînement</a><a class="text-action" href="/confidentialite.html">Confidentialité</a></nav></footer>
 
-<script>
-(() => {
-  const $ = (s) => document.querySelector(s);
-  const btn = $("#talk"), statusEl = $("#status"), retryBtn = $("#retryBtn"), pwdBtn = $("#pwdBtn");
-  const qCard = $("#qCard"), aCard = $("#aCard"), qEl = $("#question"), aEl = $("#answer");
-  const fields = {
-    role: $("#role"), company: $("#company"), profile: $("#profileText"),
-    source: $("#source"), language: $("#language"),
-  };
-
-  // --- Sécurité APP_PASSWORD ---
-  const PWD_KEY = "interview-copilot:app-password";
-  const getAppPassword = () => { try { return localStorage.getItem(PWD_KEY) || ""; } catch { return ""; } };
-  const setAppPassword = (val) => {
-    try {
-      if (val) localStorage.setItem(PWD_KEY, val);
-      else localStorage.removeItem(PWD_KEY);
-    } catch {}
-    updatePwdBadge();
-  };
-  function updatePwdBadge() {
-    if (pwdBtn) pwdBtn.textContent = getAppPassword() ? "🔒 Protégé" : "🔓 Accès";
-  }
-  updatePwdBadge();
-  if (pwdBtn) {
-    pwdBtn.addEventListener("click", () => {
-      const current = getAppPassword();
-      const next = prompt("Mot de passe APP_PASSWORD (laisse vide si aucun mot de passe requis sur ce serveur) :", current);
-      if (next !== null) setAppPassword(next.trim());
-    });
-  }
-
-  async function authFetch(url, options = {}) {
-    const headers = new Headers(options.headers || {});
-    const pwd = getAppPassword();
-    if (pwd) headers.set("x-app-password", pwd);
-    const res = await fetch(url, { ...options, headers });
-    if (res.status === 401) {
-      const data = await res.clone().json().catch(() => ({}));
-      if (data?.error === "Mot de passe invalide.") {
-        const entered = prompt("Ce serveur est protégé par un mot de passe (APP_PASSWORD). Veuillez le saisir :");
-        if (entered) {
-          setAppPassword(entered.trim());
-          headers.set("x-app-password", entered.trim());
-          return fetch(url, { ...options, headers });
-        }
-      }
-    }
-    return res;
-  }
-
-  // --- Profil sauvegardé dans le navigateur ---
-  const KEY = "interview-copilot:v1";
-  const load = () => { try { return JSON.parse(localStorage.getItem(KEY) || "{}"); } catch { return {}; } };
-  const save = () => {
-    const data = Object.fromEntries(Object.entries(fields).map(([k, el]) => [k, el.value]));
-    try { localStorage.setItem(KEY, JSON.stringify(data)); } catch {}
-  };
-  const saved = load();
-  let candidateContext = "";
-  for (const [k, el] of Object.entries(fields)) {
-    if (saved[k] != null) el.value = saved[k];
-    el.addEventListener("input", save);
-    el.addEventListener("change", save);
-  }
-  if (!fields.profile.value.trim()) $("#profile").open = true;
-
-  Promise.all([
-    authFetch("/api/account/me").then(r => r.ok ? r.json() : null),
-    authFetch("/api/account/preparation").then(r => r.ok ? r.json() : null),
-    authFetch("/api/account/resumes").then(r => r.ok ? r.json() : []),
-  ]).then(([user, preparation, resumes]) => {
-    if (!user || !preparation) return;
-    const resume = resumes.find(item => item.id === preparation.resume_id);
-    candidateContext = [resume?.content, user.goals && `Métiers recherchés : ${user.goals}`, user.salary && `Salaire recherché : ${user.salary}`, user.notes, preparation.notes].filter(Boolean).join("\n\n");
-    if (preparation.role) fields.role.value = preparation.role;
-    if (preparation.company) fields.company.value = preparation.company;
-    if (preparation.offer) fields.profile.value = preparation.offer;
-  }).catch(() => {});
-
-  // --- État ---
-  let state = "idle", recorder = null, chunks = [], release = () => {};
-  const history = [];
-
-  const LABELS = {
-    idle: ["Écouter la question", "Appuie quand l’employeur commence à parler."],
-    recording: ["Terminer l’écoute", "J’écoute… appuie dès qu’il a fini sa question."],
-    busy: ["Traitement en cours", ""],
-  };
-  function setState(next, message, isError = false) {
-    state = next;
-    btn.dataset.state = next;
-    btn.setAttribute("aria-label", LABELS[next][0]);
-    statusEl.textContent = message ?? LABELS[next][1];
-    statusEl.classList.toggle("error", isError);
-    if (retryBtn) retryBtn.disabled = next === "busy";
-  }
-
-  // --- Génération de la réponse ---
-  async function askAnswer(questionText) {
-    const q = (questionText || "").trim();
-    if (!q) {
-      setState("idle", "Veuillez saisir ou enregistrer une question.", true);
-      return;
-    }
-    qEl.value = q;
-    qCard.hidden = false;
-    aEl.textContent = "";
-    aCard.hidden = false;
-    setState("busy", "Je prépare ta réponse…");
-
-    try {
-      const res = await authFetch("/api/answer", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          question: q,
-          history,
-          context: {
-            role: fields.role.value, company: fields.company.value,
-            profile: candidateContext, offer: fields.profile.value, language: fields.language.value,
-          },
-        }),
-      });
-
-      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Erreur serveur.");
-
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let text = "";
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        text += decoder.decode(value, { stream: true });
-        aEl.textContent = text;
-      }
-      history.push({ q, a: text });
-      if (history.length > 5) history.shift();
-      setState("idle", "Réponse prête à être lue.");
-    } catch (err) {
-      setState("idle", err.message || "Une erreur est survenue.", true);
-    }
-  }
-
-  // Relancer si on clique sur le bouton ou si on fait Ctrl+Entrée / Entrée dans le champ question
-  if (retryBtn) {
-    retryBtn.addEventListener("click", () => askAnswer(qEl.value));
-  }
-  qEl.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      askAnswer(qEl.value);
-    }
-  });
-
-  // --- Capture audio ---
-  async function openAudio() {
-    if (fields.source.value === "tab") {
-      const display = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
-      const tracks = display.getAudioTracks();
-      if (!tracks.length) {
-        display.getTracks().forEach((t) => t.stop());
-        throw new Error("Aucun son partagé. Dans la fenêtre de partage, coche « Partager l’audio ».");
-      }
-      return { stream: new MediaStream(tracks), release: () => display.getTracks().forEach((t) => t.stop()) };
-    }
-    const mic = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: false, noiseSuppression: true, autoGainControl: true },
-    });
-    return { stream: mic, release: () => mic.getTracks().forEach((t) => t.stop()) };
-  }
-
-  async function startListening() {
-    try {
-      setState("busy", "Choisis la source audio et autorise le partage…");
-      const audio = await openAudio();
-      release = audio.release;
-      const mime = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"].find((m) => MediaRecorder.isTypeSupported(m));
-      recorder = new MediaRecorder(audio.stream, mime ? { mimeType: mime } : undefined);
-      chunks = [];
-      recorder.ondataavailable = (e) => e.data.size && chunks.push(e.data);
-      recorder.onstop = onRecorded;
-      recorder.start();
-      setState("recording");
-    } catch (err) {
-      release();
-      const denied = err?.name === "NotAllowedError";
-      setState("idle", denied ? "Accès au micro ou à l’écran refusé. Autorise-le dans le navigateur." : err.message || "Impossible de lancer l’écoute.", true);
-    }
-  }
-
-  function stopListening() {
-    setState("busy", "Je transcris la question…");
-    if (recorder && recorder.state !== "inactive") recorder.stop();
-  }
-
-  // --- Audio -> question -> réponse ---
-  async function onRecorded() {
-    release();
-    try {
-      const blob = new Blob(chunks, { type: recorder.mimeType || "audio/webm" });
-      if (blob.size < 3000) throw new Error("Je n’ai rien entendu. Vérifie la source du son et réessaie.");
-
-      const form = new FormData();
-      form.append("audio", blob, "question.webm");
-      form.append("language", fields.language.value);
-      const tr = await authFetch("/api/transcribe", { method: "POST", body: form });
-      const trData = await tr.json().catch(() => ({}));
-      if (!tr.ok) throw new Error(trData.error || "Échec de la transcription.");
-      const question = (trData.text || "").trim();
-      if (!question) throw new Error("Je n’ai rien compris. Réessaie.");
-
-      await askAnswer(question);
-    } catch (err) {
-      setState("idle", err.message || "Une erreur est survenue.", true);
-    }
-  }
-
-  btn.addEventListener("click", () => {
-    if (state === "idle") startListening();
-    else if (state === "recording") stopListening();
-  });
-
-  // Espace = bouton, sauf quand on écrit dans un champ
-  document.addEventListener("keydown", (e) => {
-    if (e.code !== "Space" || e.repeat) return;
-    if (/^(INPUT|TEXTAREA|SELECT|SUMMARY|BUTTON)$/.test(document.activeElement.tagName)) return;
-    e.preventDefault();
-    btn.click();
-  });
-})();
-</script>
+<script type="module" src="/live.js"></script>
 </body>
 </html>

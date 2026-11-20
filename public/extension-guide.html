@@ -1,1 +1,35 @@
-<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Installer l’extension</title><style>body{font:16px/1.7 Arial;background:#faf8f5;color:#172d45;max-width:760px;margin:50px auto;padding:0 24px}a{color:#172d45}code{overflow-wrap:anywhere;background:#eee;padding:3px}li{margin:12px 0}.box{background:#fff;border:1px solid #e5e2dc;padding:24px;border-radius:16px}</style></head><body><a href="/compte.html">← Mon espace</a><h1>Installer l’extension Chrome</h1><div class="box"><p>Cette version est un prototype local : l’extension n’est pas publiée sur le Chrome Web Store.</p><ol><li>Dans Chrome, ouvrez <strong>chrome://extensions</strong>.</li><li>Activez <strong>Mode développeur</strong>, puis cliquez sur <strong>Charger l’extension non empaquetée</strong>.</li><li>Sélectionnez le dossier <code>C:\Users\User\Documents\Codex\2026-11-13\referenced-chatgpt-conversation-this-is-an\work\archive-review\interview-copilot\extension</code>.</li><li>Cliquez sur l’icône Extensions puis sur Copilote Entretien.</li><li>Ouvrez Teams dans Chrome, sélectionnez l’onglet et partagez son audio après accord des participants.</li></ol><p>Le serveur local doit rester ouvert. Le profil de votre compte se synchronise automatiquement avec l’extension (ou via le bouton « Synchroniser » du volet) lorsque vous êtes connecté sur votre espace web.</p></div></body></html>
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Installez l’extension locale et synchronisez votre préparation.">
+  <title>Installer l’extension Chrome · Copilote Entretien</title>
+  <link rel="stylesheet" href="/ui.css">
+  <link rel="manifest" href="/manifest.webmanifest">
+</head>
+<body class="app-page">
+  <header class="app-header">
+    <a class="app-brand" href="/"><span aria-hidden="true">c</span> Copilote Entretien</a>
+    <nav aria-label="Navigation principale"><a href="/entrainement.html">Entraînement</a><a href="/tarifs.html">Offres</a><a href="/compte.html">Mon espace</a></nav>
+  </header>
+  <main class="app-wrap narrow">
+    <p class="eyebrow">Extension pour Chrome sur ordinateur</p>
+    <h1>Installer l’extension Chrome</h1>
+    <p class="page-lead">L’extension locale réutilise votre préparation pour ouvrir plus vite le copilote depuis votre navigateur.</p>
+    <section class="surface">
+      <h2>Installation manuelle</h2>
+      <ol>
+        <li>Lancez le serveur sur votre ordinateur.</li>
+        <li>Dans Chrome, ouvrez <code>chrome://extensions</code> et activez le mode développeur.</li>
+        <li>Choisissez « Charger l’extension non empaquetée », puis ouvrez le dossier <code>extension</code> du projet.</li>
+        <li>Dans votre espace candidat local, ouvrez « Extension et facturation » et générez un code d’association.</li>
+        <li>Collez ce code dans le volet Copilote et cliquez sur « Synchroniser ».</li>
+      </ol>
+      <p>Le volet est destiné à Chrome sur ordinateur. Sur téléphone, utilisez le site et son mode entraînement.</p>
+      <a class="action" href="/compte.html">Ouvrir mon espace</a>
+    </section>
+  </main>
+  <footer class="app-wrap site-footer"><nav class="toolbar" aria-label="Liens utiles"><a class="text-action" href="/">Accueil</a><a class="text-action" href="/entrainement.html">Entraînement sur mobile</a><a class="text-action" href="/confidentialite.html">Confidentialité</a></nav></footer>
+</body>
+</html>

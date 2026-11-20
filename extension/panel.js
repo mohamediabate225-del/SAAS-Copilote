@@ -2,55 +2,61 @@ const $ = (id) => document.getElementById(id);
 const fields = ["role", "company", "profile", "language"];
 const button = $("record"), status = $("status");
 let state = "idle", stream, recorder, chunks = [], base = "", history = [];
-chrome.storage.local.get(fields).then((saved) => {
-  for (const name of fields) if (saved[name] !== undefined) $(name).value = saved[name];
-  syncWithAccount(false);
-});
-for (const name of fields) $(name).addEventListener("input", () => chrome.storage.local.set({ [name]: $(name).value }));
+let extensionToken = "";
+const tokenInput = $("pairCode");
+
 async function syncWithAccount(interactive = false) {
   const syncStatus = $("syncStatus");
   try {
-    if (interactive && syncStatus) syncStatus.textContent = "Synchronisation en cours…";
-    const url = await findServer();
-    const [userRes, prepRes, resumesRes] = await Promise.all([
-      fetch(url + "/api/account/me", { credentials: "include" }),
-      fetch(url + "/api/account/preparation", { credentials: "include" }),
-      fetch(url + "/api/account/resumes", { credentials: "include" }),
-    ]);
-    if (!userRes.ok || !prepRes.ok) {
-      if (interactive && syncStatus) syncStatus.textContent = "Non connecté. Connectez-vous sur votre espace web.";
-      return;
+    if (interactive && tokenInput.value.trim()) {
+      const entered = tokenInput.value.trim();
+      if (!/^[a-f0-9]{64}$/.test(entered)) throw new Error("Collez le code complet depuis votre espace.");
+      extensionToken = entered;
     }
-    const user = await userRes.json();
-    const prep = await prepRes.json();
-    const resumes = (resumesRes.ok ? await resumesRes.json() : []) || [];
-    const resume = resumes.find((r) => r.id === prep.resume_id);
-    const fullProfile = [
-      resume?.content,
-      user.goals && `Métiers recherchés : ${user.goals}`,
-      user.salary && `Salaire recherché : ${user.salary}`,
-      user.notes,
-      prep.offer && `Offre visée :\n${prep.offer}`,
-      prep.notes,
-    ].filter(Boolean).join("\n\n");
-
-    if (prep.role) $("role").value = prep.role;
-    if (prep.company) $("company").value = prep.company;
-    if (fullProfile) $("profile").value = fullProfile;
-
-    await chrome.storage.local.set({
-      role: $("role").value,
-      company: $("company").value,
-      profile: $("profile").value,
-    });
-    if (syncStatus) syncStatus.textContent = `✓ Synchronisé (${user.first_name || user.email})`;
-  } catch (err) {
-    if (interactive && syncStatus) syncStatus.textContent = "Serveur inaccessible. Lancez npm start.";
+    if (!extensionToken) throw new Error("Générez un code dans votre espace candidat, puis collez-le ici.");
+    syncStatus.textContent = "Synchronisation en cours…";
+    const url = await findServer();
+    const response = await extensionFetch(url + "/api/account/context");
+    const context = await readResult(response);
+    $("role").value = context.role || "";
+    $("company").value = context.company || "";
+    $("profile").value = [context.profile, context.offer && "Offre visée : " + context.offer].filter(Boolean).join("\n\n");
+    tokenInput.value = "";
+    await chrome.storage.local.set({ extensionToken });
+    syncStatus.textContent = "Préparation synchronisée.";
+  } catch (error) {
+    syncStatus.textContent = error.message;
   }
 }
-if ($("syncAccount")) {
-  $("syncAccount").addEventListener("click", () => syncWithAccount(true));
+
+function extensionFetch(url, options = {}) {
+  const headers = new Headers(options.headers);
+  headers.set("Authorization", "Bearer " + extensionToken);
+  return fetch(url, { ...options, headers, credentials: "omit" });
 }
+async function readResult(response) {
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || "Accès indisponible. Vérifiez votre code.");
+  return data;
+}
+
+chrome.storage.local.get(["extensionToken", "language"]).then(saved => {
+  extensionToken = saved.extensionToken || "";
+  if (saved.language) $("language").value = saved.language;
+  syncWithAccount();
+});
+$("language").addEventListener("change", () => chrome.storage.local.set({ language: $("language").value }));
+$("syncAccount").addEventListener("click", () => syncWithAccount(true));
+$("forgetAccount").addEventListener("click", async () => {
+  extensionToken = "";
+  history = [];
+  tokenInput.value = "";
+  for (const name of ["role", "company", "profile", "question"]) $(name).value = "";
+  $("answer").textContent = "";
+  $("result").hidden = true;
+  await chrome.storage.local.remove(["extensionToken", "role", "company", "profile"]);
+  $("syncStatus").textContent = "Code et données locales retirés de ce volet.";
+});
 function setState(next, text) {
   state = next; status.textContent = text;
   button.disabled = next === "busy";
@@ -71,10 +77,14 @@ function stopTracks() { if (stream) stream.getTracks().forEach((track) => track.
 async function answerQuestion(question) {
   setState("busy", "Préparation de votre réponse…");
   $("answer").textContent = "";
-  const res = await fetch(base + "/api/answer", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question, history, context: Object.fromEntries(fields.filter(f => f !== "language").map(f => [f, $(f).value]).concat([["language", $("language").value]])) }) });
-  if (!res.ok || !res.body) throw new Error("Impossible de préparer la réponse. Vérifiez le serveur.");
+  const res = await extensionFetch(base + "/api/answer", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question, history, context: Object.fromEntries(fields.filter(f => f !== "language").map(f => [f, $(f).value]).concat([["language", $("language").value]])) }) });
+  if (!res.ok) await readResult(res);
+  if (!res.body) throw new Error("Aucune réponse reçue.");
   const reader = res.body.getReader(), decoder = new TextDecoder(); let answer = "";
   for (;;) { const part = await reader.read(); if (part.done) break; answer += decoder.decode(part.value, { stream: true }); $("answer").textContent = answer; }
+  answer += decoder.decode();
+  if (!answer.trim()) throw new Error("Aucune réponse reçue.");
+  $("answer").textContent = answer;
   history.push({ q: question, a: answer }); history = history.slice(-5);
   setState("idle", "Réponse prête. Vérifiez-la et adaptez-la à votre parcours.");
 }
@@ -82,6 +92,7 @@ button.addEventListener("click", async () => {
   if (state === "recording") { setState("busy", "Transcription en cours…"); recorder.stop(); return; }
   if (state !== "idle") return;
   try {
+    if (!extensionToken) throw new Error("Associez votre compte avant de capturer le son.");
     // Request the picker immediately during the user gesture.
     const pending = navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
     setState("busy", "Choisissez l’onglet et partagez son audio…");
@@ -99,8 +110,8 @@ button.addEventListener("click", async () => {
         const blob = new Blob(chunks, { type: recorder.mimeType || "audio/webm" });
         if (blob.size < 1000) throw new Error("Enregistrement trop court. Réessayez.");
         const form = new FormData(); form.append("audio", blob, "question.webm");
-        const res = await fetch(base + "/api/transcribe", { method: "POST", body: form });
-        const data = await res.json();
+        const res = await extensionFetch(base + "/api/transcribe", { method: "POST", body: form });
+        const data = await readResult(res);
         if (!res.ok || !data.text) throw new Error(data.error || "Aucune parole reconnue. Vérifiez l’audio partagé.");
         $("question").value = data.text; $("result").hidden = false;
         await answerQuestion(data.text);

@@ -1,0 +1,15 @@
+{
+  "id": "/",
+  "name": "Copilote Entretien",
+  "short_name": "Copilote",
+  "description": "Préparez vos entretiens et retrouvez vos simulations.",
+  "lang": "fr",
+  "start_url": "/dashboard.html",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#faf8f5",
+  "theme_color": "#172d45",
+  "icons": [
+    { "src": "/copilote.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

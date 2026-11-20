@@ -1,0 +1,13 @@
+*
+!package.json
+!package-lock.json
+!server.js
+!workspace.js
+!oauth.js
+!accounts.js
+!billing.js
+!practice.js
+!security.js
+!prompts.js
+!public/
+!public/**

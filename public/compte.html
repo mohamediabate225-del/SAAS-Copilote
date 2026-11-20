@@ -1,4 +1,119 @@
-<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Mon espace — Copilote Entretien</title><style>
-:root{font-family:Arial,sans-serif;color:#172d45;background:#faf8f5}*{box-sizing:border-box}body{margin:0}header{padding:20px max(20px,calc((100vw - 1000px)/2));background:white;border-bottom:1px solid #e7e2dd;font-weight:bold}a{color:#172d45}main{max-width:1000px;margin:40px auto;padding:0 20px}h1{font-size:clamp(30px,4vw,44px);letter-spacing:-.04em}h2{font-size:21px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}.card{background:#fff;border:1px solid #e7e2dd;border-radius:20px;padding:24px;margin-bottom:20px}label{display:block;font-size:14px;font-weight:bold;margin:14px 0}input,textarea,select{display:block;width:100%;margin-top:7px;padding:12px;border:1px solid #cfd5d8;border-radius:8px;font:inherit}textarea{resize:vertical}button,.button{background:#172d45;color:white;border:0;border-radius:24px;padding:13px 20px;min-height:44px;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;font-weight:bold}.secondary{background:#f0eee9;color:#172d45}p,.hint{color:#586574;line-height:1.55;font-size:14px}.error{color:#a13820}nav{display:flex;gap:12px;flex-wrap:wrap}ul{padding-left:20px}li{padding:5px 0}[hidden]{display:none!important}:focus-visible{outline:3px solid #a7431f;outline-offset:3px}@media(max-width:700px){.grid{grid-template-columns:1fr}}
-</style></head><body><header><a href="/">← Copilote Entretien</a></header><main><div id="auth"><h1>Préparez votre prochain entretien.</h1><p>Créez votre espace local pour retrouver vos CV et vos informations sur cet ordinateur.</p><div class="grid"><form class="card" id="register"><h2>Créer un compte</h2><label>Prénom<input name="first_name" autocomplete="given-name" maxlength="100" required></label><label>Nom<input name="last_name" autocomplete="family-name" maxlength="100" required></label><label>Adresse email<input type="email" name="email" autocomplete="email" required></label><label>Mot de passe<input type="password" name="password" autocomplete="new-password" minlength="10" maxlength="200" required></label><label>Confirmer le mot de passe<input type="password" name="password_confirmation" autocomplete="new-password" minlength="10" maxlength="200" required></label><p>10 caractères minimum. Choisissez un mot de passe unique.</p><button>Créer mon compte</button></form><form class="card" id="login"><h2>Se connecter</h2><label>Adresse email<input type="email" name="email" autocomplete="email" required></label><label>Mot de passe<input type="password" name="password" autocomplete="current-password" required></label><nav><button>Se connecter</button><a href="/mot-de-passe.html">Mot de passe oublié ?</a></nav><p>Connexion Google et Apple : pas encore configurée.</p></form></div></div>
-<div id="dashboard" hidden><nav><span id="email"></span><button id="logout" class="secondary">Se déconnecter</button></nav><h1>Votre espace de préparation</h1><p>Vos données sont stockées localement sur cet ordinateur. Le prototype n’est pas encore un service en ligne.</p><div class="grid"><form class="card" id="profile"><h2>Vos objectifs</h2><label>Métiers recherchés<input name="goals" placeholder="Ex. acheteur junior, supply chain"></label><label>Salaire recherché<input name="salary" placeholder="Ex. 35 000 € brut par an"></label><label>Informations complémentaires<textarea name="notes" rows="5" placeholder="Vos points forts, contraintes et préférences"></textarea></label><button>Enregistrer mes informations</button></form><div class="card"><h2>Mes CV</h2><p>Ajoutez plusieurs CV au format PDF ou collez leur texte.</p><form id="resume"><label>Nom du CV<input name="name" placeholder="Ex. Achats junior"></label><label>Fichier PDF<input type="file" name="pdf" accept="application/pdf"></label><label>Ou texte du CV<textarea name="content" rows="4"></textarea></label><button>Ajouter ce CV</button></form><ul id="resumes"></ul></div></div><form class="card" id="preparation"><h2>Préparer un entretien</h2><label>CV à utiliser<select name="resume_id" id="resumeSelect"><option value="">Choisir un CV</option></select></label><div class="grid"><label>Poste visé<input name="role"></label><label>Entreprise<input name="company"></label></div><label>Offre d’emploi<textarea name="offer" rows="6" placeholder="Collez l’offre d’emploi"></textarea></label><label>Notes complémentaires<textarea name="notes" rows="4" placeholder="Informations reçues, email ou notes"></textarea></label><button>Enregistrer la préparation</button></form><nav><a class="button" href="/index.html">Ouvrir le copilote</a><a class="button" style="background:#a7431f;" href="/entrainement.html">🎯 Mode entraînement</a><a class="button secondary" href="/extension-guide.html">Installer l’extension Chrome</a><a class="button secondary" href="/tarifs.html">Voir les tarifs</a></nav></div><p id="status" role="status" aria-live="polite"></p></main><script src="/compte.js"></script></body></html>
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Mon espace · Copilote Entretien</title>
+  <link rel="stylesheet" href="/ui.css">
+</head>
+<body class="app-page">
+  <header class="app-header">
+    <a class="app-brand" href="/"><span aria-hidden="true">c</span> Copilote Entretien</a>
+    <nav aria-label="Navigation principale"><a href="/dashboard.html">Tableau de bord</a><a href="/entrainement.html">Entraînement</a><a href="/tarifs.html">Offres</a></nav>
+  </header>
+  <main class="app-wrap" id="main">
+    <p id="status" class="notice" role="status" tabindex="-1">Vérification de votre connexion…</p>
+    <section id="auth" aria-labelledby="auth-title" hidden>
+      <p class="eyebrow">Un espace pour préparer la suite</p>
+      <h1 id="auth-title">Votre espace candidat</h1>
+      <p class="intro-copy page-lead">Préparez vos entretiens et retrouvez vos CV, simulations et débriefs.</p>
+      <div class="auth-grid">
+        <form class="surface" id="login">
+          <p class="eyebrow">Déjà inscrit</p><h2>Se connecter</h2>
+          <label>Adresse email<input type="email" name="email" autocomplete="email" required></label>
+          <label>Mot de passe<input type="password" name="password" autocomplete="current-password" required></label>
+          <button class="action">Se connecter</button>
+          <a class="text-action" href="/mot-de-passe.html">Mot de passe oublié ?</a>
+        </form>
+        <form class="surface" id="register">
+          <p class="eyebrow">Commencer gratuitement</p><h2>Créer un compte</h2>
+          <p>Essayez l’IA pendant 10 minutes à partir de votre première utilisation.</p>
+          <div class="field-grid">
+            <label>Prénom<input name="first_name" autocomplete="given-name" maxlength="100" required></label>
+            <label>Nom<input name="last_name" autocomplete="family-name" maxlength="100" required></label>
+          </div>
+          <label>Adresse email<input type="email" name="email" autocomplete="email" maxlength="254" required></label>
+          <label>Mot de passe<input type="password" name="password" autocomplete="new-password" minlength="10" maxlength="200" aria-describedby="password-hint" required></label>
+          <p class="field-hint" id="password-hint">Au moins 10 caractères.</p>
+          <label>Confirmer le mot de passe<input type="password" name="password_confirmation" autocomplete="new-password" minlength="10" maxlength="200" required></label>
+          <button class="action">Créer mon compte</button>
+        </form>
+      </div>
+    </section>
+    <section id="dashboard" hidden>
+      <div class="toolbar">
+        <div><p class="eyebrow">Votre espace personnel</p><h1>Votre préparation</h1><p id="email"></p></div>
+        <button id="logout" class="action secondary" type="button">Se déconnecter</button>
+      </div>
+      <p data-trial class="trial-bar" hidden><span role="status"></span><time aria-hidden="true" hidden></time><a hidden></a></p>
+      <nav class="toolbar shortcuts" aria-label="Outils">
+        <a class="action" href="/entrainement.html">Lancer un entraînement</a>
+        <a class="action secondary" href="/index.html">Ouvrir le copilote</a>
+        <a class="text-action" href="/entrainement.html#historique">Voir mes simulations</a>
+      </nav>
+      <form class="surface" id="preparation">
+        <p class="eyebrow">À reprendre sur vos autres outils</p><h2>Préparer un entretien</h2>
+        <label>CV à utiliser<select name="resume_id" id="resumeSelect"><option value="">Sans CV</option></select></label>
+        <div class="field-grid">
+          <label>Poste visé<input name="role" maxlength="200"></label>
+          <label>Entreprise<input name="company" maxlength="200"></label>
+        </div>
+        <label>Offre d’emploi<textarea name="offer" rows="4" maxlength="30000" placeholder="Collez l’offre d’emploi"></textarea></label>
+        <label>Notes de préparation<textarea name="notes" rows="3" maxlength="30000"></textarea></label>
+        <button class="action secondary">Enregistrer la préparation</button>
+        <p class="field-hint" role="status" data-save-status></p>
+      </form>
+      <details class="surface">
+        <summary>Partager le poste ou programmer un rappel</summary>
+        <button id="share-preparation" class="action secondary" type="button">Partager le poste et l’entreprise</button>
+        <p class="field-hint">Le partage inclut le poste, l’entreprise et un lien vers la démo.</p>
+        <form id="reminder">
+          <label>Quand vous entraîner ?<input name="datetime" type="datetime-local" required></label>
+          <button class="action secondary">Ajouter à mon calendrier</button>
+        </form>
+      </details>
+      <div class="auth-grid">
+        <form class="surface" id="profile">
+          <h2>Vos objectifs</h2>
+          <label>Métiers recherchés<input name="goals" maxlength="12000" placeholder="Ex. Acheteur junior"></label>
+          <label>Salaire recherché<input name="salary" maxlength="12000" placeholder="Ex. 35 000 € brut par an"></label>
+          <label>Informations complémentaires<textarea name="notes" rows="4" maxlength="12000"></textarea></label>
+          <button class="action secondary">Enregistrer mes objectifs</button>
+          <p class="field-hint" role="status" data-save-status></p>
+        </form>
+        <section class="surface" aria-labelledby="cv-title">
+          <h2 id="cv-title">Mes CV</h2>
+          <ul class="record-list" id="resumes"></ul>
+          <form id="resume">
+            <label>Nom du CV<input name="name" maxlength="120"></label>
+            <label>Fichier PDF<input type="file" name="pdf" accept="application/pdf"></label>
+            <label>Ou texte du CV<textarea name="content" rows="3" maxlength="50000"></textarea></label>
+            <button class="action secondary">Ajouter ce CV</button>
+          </form>
+        </section>
+      </div>
+      <details class="surface">
+        <summary>Extension et facturation</summary>
+        <p><a href="/extension-guide.html">Installer l’extension Chrome locale</a></p>
+        <div class="toolbar">
+          <button id="pair" class="action secondary" type="button">Générer un code d’association</button>
+          <button id="unpair" class="action secondary" type="button">Révoquer l’accès</button>
+          <button id="portal" class="action secondary" type="button" hidden>Gérer mon abonnement</button>
+        </div>
+        <label id="pairField" hidden>Code valable 7 jours<input id="pairCode" readonly autocomplete="off"></label>
+      </details>
+      <details class="surface">
+        <summary>Données et confidentialité</summary>
+        <p><a href="/confidentialite.html">Voir comment vos données sont traitées</a></p>
+        <a class="text-action" href="/api/account/export" id="export-data" download>Exporter mes données</a>
+        <form id="delete-account">
+          <label>Mot de passe pour supprimer mon compte<input type="password" name="password" autocomplete="current-password" required></label>
+          <button class="action danger">Supprimer mon compte</button>
+        </form>
+      </details>
+    </section>
+  </main>
+  <footer class="app-wrap site-footer"><nav class="toolbar" aria-label="Liens utiles"><a class="text-action" href="/">Accueil</a><a class="text-action" href="/confidentialite.html">Données et confidentialité</a><a class="text-action" href="/tarifs.html">Offres</a></nav></footer>
+  <script type="module" src="/compte.js"></script>
+</body>
+</html>
