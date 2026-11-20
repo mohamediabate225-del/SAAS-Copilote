@@ -1,5 +1,10 @@
-node_modules
+node_modules/
 .env
-.env
+.env.*
+!.env.example
 *.sqlite
-*.sqlite-journal
+*.sqlite-*
+*.db
+*.db-*
+test-results/
+playwright-report/
