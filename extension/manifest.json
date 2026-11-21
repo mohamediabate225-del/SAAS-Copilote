@@ -4,12 +4,28 @@
   "version": "0.1.0",
   "description": "Un copilote latéral pour préparer et structurer vos réponses.",
   "minimum_chrome_version": "116",
-  "permissions": ["sidePanel", "storage"],
-  "host_permissions": ["http://127.0.0.1:3100/*", "http://127.0.0.1:3101/*"],
+  "permissions": [
+    "sidePanel",
+    "storage"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1:3100/*"
+  ],
   "commands": {
-    "_execute_action": { "suggested_key": { "default": "Alt+Shift+I" } }
+    "_execute_action": {
+      "suggested_key": {
+        "default": "Alt+Shift+I"
+      }
+    }
   },
-  "action": {"default_title": "Ouvrir Copilote Entretien"},
-  "background": {"service_worker": "background.js"},
-  "side_panel": {"default_path": "panel.html"}
+  "action": {
+    "default_title": "Ouvrir Copilote Entretien"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "side_panel": {
+    "default_path": "panel.html"
+  },
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsWC0ELJCETzPAhB2JE4JYaMe9v+uR2k9+RD3nqd3FRH/Jk5Z0mu14mrwT0vMcWcHSifOhrXRT8tGJjmhZqANdgF4q2e22D3cBi1PdufFtjfTrtzV6IXwn5j+57SrmGLkUCeiVyUV5zHHcICkc/xHMQVAJkBviNDBSSQk2irzLhDBcn6ecf8cNIvSdnfRMRLvBWJbUNYEBZ3ymEY7FNlE58AP94ejCAjzl7o++tAcTNE420imG3BNxsNNm//JhJOcuh9XTdn5iVy5MPP0lhbz7naZL50idhEf8HSOXrbgawoy7RTZtw6UdLYHDdpr5MBcHiMj5kin248JzpTReVvY6QIDAQAB"
 }

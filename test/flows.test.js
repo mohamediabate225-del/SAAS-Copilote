@@ -10,7 +10,7 @@ import { createRequire } from "node:module";
 import { randomUUID, createHash } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import express from "express";
-import { createPreviewGate } from "../security.js";
+
 
 let directory, database, fixture, child, base;
 let calls = 0;
@@ -37,6 +37,7 @@ const digest = value => createHash("sha256").update(value).digest("hex");
 before(async () => {
   directory = await mkdtemp(join(tmpdir(), "copilote-qa-"));
   database = join(directory, "qa.sqlite");
+  process.env.COPILOTE_DB_PATH = join(directory,"security.sqlite");
   fixture = await serve(async (req, res) => {
     calls++;
     const chunks = [];
@@ -55,6 +56,12 @@ before(async () => {
     if(providerBody.messages?.[0]?.content?.startsWith("Vérifie les faits personnels")){
       return res.end(JSON.stringify({choices:[{message:{content:JSON.parse(providerBody.messages.at(-1).content).draft}}]}));
     }
+    if (providerBody.stream && providerBody.messages.at(-1).content === "test-stream-progressif") {
+      res.setHeader("Content-Type","text/event-stream");
+      res.write('data: {"choices":[{"delta":{"content":"Première phrase. "}}]}\n\n');
+      setTimeout(() => res.end('data: {"choices":[{"delta":{"content":"Suite."}}]}\n\ndata: [DONE]\n\n'), 400);
+      return;
+    }
     if (providerBody.stream) {
       res.setHeader("Content-Type", "text/event-stream");
       res.end('data: {"choices":[{"delta":{"content":"Réponse de test."}}]}\n\ndata: {"choices":[],"usage":{"prompt_tokens":10,"completion_tokens":4}}\n\ndata: [DONE]\n\n');
@@ -68,7 +75,7 @@ before(async () => {
       ...process.env,
       BILLING_ENABLED: "false", NODE_ENV: "test", HOST: "127.0.0.1", PORT: "0",
       OPENAI_API_KEY: "faux-test-local", OPENAI_BASE_URL: urlFor(fixture) + "/v1",
-      COPILOTE_DB_PATH: database,
+      COPILOTE_DB_PATH: database, EXTENSION_ID:"a".repeat(32),
       PREVIEW_TOKEN: "", PREVIEW_PASSWORD: "", APP_BASE_URL: "", APP_PASSWORD: "",
       SMTP_HOST: "", STRIPE_SECRET_KEY: "",
     },
@@ -252,6 +259,7 @@ test("réinitialisation à usage unique et révocation des sessions", async () =
 });
 
 test("le lien de prévisualisation crée un cookie signé et redirige sans secret", async () => {
+  const { createPreviewGate } = await import("../security.js");
   const secret = randomUUID() + randomUUID();
   const app = express();
   app.use(createPreviewGate(secret));
@@ -455,4 +463,17 @@ test("WebKit mobile et Edge exécutent le parcours candidat", { skip: !process.e
       await browser.close();
     }
   }
+});
+
+test("une réponse avec CV s'affiche avant la fin de la génération", async () => {
+  const login = await request("/api/account/login",{method:"POST",body:{email:"cv-import@example.test",password}});
+  assert.equal(login.status,200);
+  const res=await request("/api/answer",{method:"POST",cookie:cookieOf(login),body:{question:"test-stream-progressif",context:{profile:"Profil fictif."}}});
+  assert.equal(res.status,200);
+  const reader=res.body.getReader();
+  const first=new TextDecoder().decode((await reader.read()).value);
+  assert.equal(first,"Première phrase. ");
+  let rest="";
+  for (;;) { const chunk=await reader.read();if(chunk.done)break;rest+=new TextDecoder().decode(chunk.value); }
+  assert.equal(rest,"Suite.");
 });

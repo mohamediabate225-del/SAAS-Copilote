@@ -1,11 +1,11 @@
 import { freeAccess } from "./access.js";
-import { DatabaseSync } from "node:sqlite";
+import { db } from "./storage.js";
+export { db };
 import { randomBytes, randomUUID, scryptSync, timingSafeEqual, createHash } from "node:crypto";
 import { PDFParse } from "pdf-parse";
 import nodemailer from "nodemailer";
 import { limitRequests, secureRequest } from "./security.js";
 
-export const db = new DatabaseSync(process.env.COPILOTE_DB_PATH || "copilote-local.sqlite");
 db.exec(`PRAGMA foreign_keys=ON;
 CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, email TEXT UNIQUE NOT NULL, salt TEXT NOT NULL, password_hash TEXT NOT NULL, goals TEXT DEFAULT '', salary TEXT DEFAULT '', notes TEXT DEFAULT '', trial_started INTEGER);
 CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, expires INTEGER NOT NULL);

@@ -27,3 +27,37 @@ Les secrets sont des variables d’environnement du serveur. Pour le mot de pass
 La prévisualisation privée s’active avec un `PREVIEW_TOKEN` aléatoire d’au moins 32 caractères et une origine HTTPS. Le lien de prévisualisation transmet ce jeton une fois, puis le serveur redirige vers une URL sans jeton et envoie un cookie signé. Réservez cette configuration aux aperçus privés.
 
 `npm run usage` affiche les nombres agrégés de simulations, d’essais et d’abonnements, ainsi que les appels IA, les jetons signalés par l’API et le volume audio. Le rapport ne contient ni le texte des échanges ni d’identifiants.
+
+## Serveur, sécurité et sauvegardes
+
+Node 24 LTS est requis (voir .nvmrc) pour node:sqlite. Port unique par défaut : 3100.
+HOST vaut 127.0.0.1 en local et 0.0.0.0 en production. APP_BASE_URL doit contenir
+l'origine exacte, sans chemin (http://localhost:3100 en local, HTTPS en production).
+APP_PASSWORD reste une barrière de bêta facultative ; un jeton d'extension valide
+continue d'exiger un compte et ne dépend jamais des cookies.
+
+EXTENSION_ID doit être exactement l'identifiant affiché dans chrome://extensions.
+La clé publique de manifest.json fixe l'identifiant local : imonkailbdfkpmlmaapgifgjcgpodbgi.
+Aucune autre extension n'est autorisée. Rechargez l'extension après modification du manifest.
+
+Les limites de fréquence sont persistées en SQLite ; les secrets d'authentification
+sont hachés et les sessions expirées sont purgées toutes les 15 minutes. Les journaux
+ne contiennent ni CV, ni questions, ni audio. /api/health vérifie la disponibilité de
+la base sans exposer les secrets ni appeler un fournisseur payant.
+
+npm run backup utilise l'API SQLite de sauvegarde en ligne, compatible avec WAL.
+BACKUP_DIR doit pointer vers un stockage privé distinct du volume de production.
+Chiffrez les sauvegardes hors site, limitez leur accès et testez une restauration
+sur une copie avant mise en ligne. Ne copiez pas uniquement le fichier .sqlite actif :
+des transactions peuvent être présentes dans le journal WAL.
+
+Migration Postgres future : isoler progressivement les requêtes dans des dépôts,
+remplacer les transactions synchrones et les placeholders SQLite, migrer données et
+clés étrangères, vérifier comptages et isolation par utilisateur sur une copie.
+Prévoir une fenêtre de maintenance, une sauvegarde et un retour à la version précédente.
+
+La réponse avec CV est maintenant diffusée progressivement en un seul appel de
+rédaction (GROUNDED_ANSWER_MODEL, défaut gpt-4.1), avec les règles factuelles.
+L'identification est préparée pendant l'écoute et réutilisée seulement si la
+transcription est identique. Les extraits audio durent au maximum 4 secondes, ou
+s'arrêtent après environ 500 ms de silence. Le délai réseau et fournisseur reste variable.

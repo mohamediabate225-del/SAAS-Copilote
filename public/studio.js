@@ -15,6 +15,31 @@ let session,
   analyser,
   audioSamples;
 let answerQueue = Promise.resolve();
+let focusCache, focusTimer, renderFrame;
+function scheduleRender() {
+  if (!renderFrame) renderFrame = requestAnimationFrame(() => { renderFrame = null; render(); });
+}
+function focusInput(row = rows.at(-1)) {
+  const index = rows.indexOf(row);
+  const previous = rows.slice(0, index).findLastIndex(item => item.a);
+  return {transcript: rows.slice(previous + 1,index + 1).map(item => item.q).join(" ").slice(-24000),
+    previousQuestion: rows[previous]?.prompt || rows[previous]?.q || ""};
+}
+function resolveFocus(input) {
+  const key = JSON.stringify(input);
+  if (focusCache?.key !== key) {
+    const promise = api("/api/focus-question",json("POST",input));
+    promise.catch(() => {}); // Background failure is displayed only when Answer needs it.
+    focusCache = {key,promise};
+  }
+  return focusCache.promise;
+}
+function prepareFocus() {
+  clearTimeout(focusTimer);
+  focusTimer = setTimeout(() => {
+    if (!closed && !answering && rows.length) resolveFocus(focusInput()).catch(() => {});
+  }, 250);
+}
 let transcribing = Promise.resolve(),
   saving = Promise.resolve(),
   backlog = 0,
@@ -109,7 +134,7 @@ async function suggest(row, web = session.web ? "auto" : false) {
     if(row.audioQuestion){
       const previous=rows.slice(0,rows.indexOf(row)).filter(item=>item.a).at(-1);
       el("roomStatus").textContent="Identification de la question…";
-      const focus=await api("/api/focus-question",json("POST",{transcript:question,previousQuestion:previous?.prompt||previous?.q||""}));
+      const focus=await resolveFocus({transcript:question,previousQuestion:previous?.prompt||previous?.q||""});
       if(focus.needs_clarification){
         el("question").value=question;
         throw new Error("Je n’ai pas identifié une demande complète. Corrigez la question ci-dessus puis réessayez.");
@@ -140,7 +165,8 @@ async function suggest(row, web = session.web ? "auto" : false) {
       if (part.done) break;
       text += decoder.decode(part.value, { stream: true });
       row.a = text;
-      render();
+      el("roomStatus").textContent = "Réponse en cours…";
+      scheduleRender();
     }
     refreshTrial();
     row.a = text + decoder.decode();
@@ -236,6 +262,7 @@ function captureChunk() {
           if (rows.length === 0) refreshTrial();
           if (result.text?.trim() && !closed) {
             const row = append(result.text.trim());
+            prepareFocus();
             if (
               session.auto_answer && !resolving &&
               /[?？]|^(comment|pourquoi|présentez|décrivez|quel|what|how|why)/i.test(
@@ -282,8 +309,8 @@ function captureChunk() {
     const rms = Math.sqrt(audioSamples.reduce((sum,value)=>sum+value*value,0)/audioSamples.length);
     const now = performance.now();
     if (rms > 0.012) { speechDetected = true; lastSpeech = now; }
-    const endOfPhrase = speechDetected && now-lastSpeech > 900 && now-startedAt > 900;
-    if (endOfPhrase || now-startedAt >= 6000) r.stop();
+    const endOfPhrase = speechDetected && now-lastSpeech > 500 && now-startedAt > 600;
+    if (endOfPhrase || now-startedAt >= 4000) r.stop();
   }, 100);
 }
 el("connectForm").onsubmit = async (event) => {
@@ -396,6 +423,8 @@ el("exit").onclick = leaveSession;
 document.querySelector(".studio-bar .brand").onclick = leaveSession;
 window.addEventListener("pagehide", () => {
   closed = true;
+  clearTimeout(focusTimer);
+  cancelAnimationFrame(renderFrame);
   if (recorder?.state === "recording") recorder.stop();
   release();
 });

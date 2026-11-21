@@ -8,3 +8,6 @@ node_modules/
 *.db-*
 test-results/
 playwright-report/
+
+backups/
+release/

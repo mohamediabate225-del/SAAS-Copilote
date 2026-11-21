@@ -6,6 +6,9 @@
 !oauth.js
 !access.js
 !question-focus.js
+!storage.js
+!scripts/
+!scripts/**
 !accounts.js
 !billing.js
 !practice.js
