@@ -1,4 +1,3 @@
-import { setupDesktop } from "./desktop.js";
 import { api, json } from "./app.js";
 import {
   element,
@@ -35,10 +34,6 @@ let config,
   stage,
   purpose,
   pageVersion = 0;
-const desktop = setupDesktop({
-  button: el("desktop"), installButton: el("installDesktop"),
-  browserLink: el("browser"), message: el("installHint"), userId: () => currentUser?.id
-});
 function onboarding(second = false) {
   el("onboard").hidden = false;
   el("shell").hidden = true;
@@ -125,7 +120,6 @@ function openSession(s) {
     return;
   }
   el("browser").href = "/studio.html?session=" + encodeURIComponent(s.id);
-  desktop.select(s.id);
   el("platform").showModal();
 }
 function listSessions(host, sessions, mock) {
@@ -392,16 +386,7 @@ window.addEventListener("hashchange", render);
 try {
   currentUser = await api("/api/account/me");
   config = await api(root + "config");
-  const pending = desktop.pending();
-  if (pending) {
-    try {
-      await api(root + "sessions/" + pending);
-      location.replace("/studio.html?session=" + encodeURIComponent(pending));
-    } catch {
-      await dashboard();
-      notify("Retrouvez votre session dans l’historique.");
-    }
-  } else await dashboard();
+  await dashboard();
 } catch (error) {
   if (error.status === 401)
     location.replace(

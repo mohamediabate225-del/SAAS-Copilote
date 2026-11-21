@@ -362,46 +362,12 @@ test("WebKit mobile et Edge exécutent le parcours candidat", { skip: !process.e
       await wiz.getByRole("button",{name:"Suivant"}).click();
       await wiz.getByLabel("Conserver la transcription").check();
       await wiz.getByRole("button",{name:"Créer la session",exact:true}).click();
-      if (!mobile) {
-        const popupPromise=page.waitForEvent("popup");
-        await page.getByRole("button",{name:"Ouvrir en fenêtre dédiée",exact:true}).click();
-        const popup=await popupPromise;
-        await popup.waitForURL("**/studio.html?session=*");
-        await popup.getByRole("heading",{name:"Connecter la session"}).waitFor();
-        assert.equal(await popup.evaluate(async()=> (await fetch("/api/account/me")).status),200);
-        const sessionUrl=popup.url();
-        await popup.close();
-        await page.evaluate(()=>{
-          window.originalOpen=window.open;
-          window.open=()=>null;
-        });
-        await page.getByRole("button",{name:"Ouvrir en fenêtre dédiée",exact:true}).click();
-        await page.getByText(/La fenêtre a été bloquée/).waitFor();
-        await page.evaluate(()=>{
-          window.open=window.originalOpen;
-          const install=new Event("beforeinstallprompt",{cancelable:true});
-          install.prompt=async()=>{};
-          install.userChoice=Promise.resolve({outcome:"accepted"});
-          window.dispatchEvent(install);
-        });
-        await page.getByRole("button",{name:"Installer l’application",exact:true}).click();
-        await page.getByText(/Installation acceptée/).waitFor();
-        const app=await page.context().newPage();
-        await app.addInitScript(()=>{
-          const native=window.matchMedia.bind(window);
-          window.matchMedia=query=>{
-            const result=native(query);
-            if(query==="(display-mode: standalone)")Object.defineProperty(result,"matches",{value:true});
-            return result;
-          };
-        });
-        await app.goto(base+"/dashboard.html");
-        await app.waitForURL(sessionUrl);
-        await app.getByRole("heading",{name:"Connecter la session"}).waitFor();
-        assert.equal(await app.evaluate(()=>localStorage.getItem("copilote:desktop-session")),null);
-        await app.close();
-      }
+      assert.equal(await page.locator("#platform a").count(),1);
+      assert.equal(await page.locator("#desktop, #installDesktop").count(),0);
+      const pagesBefore=page.context().pages().length;
       await page.getByRole("link",{name:"Ouvrir dans le navigateur"}).click();
+      await page.waitForURL("**/studio.html?session=*");
+      assert.equal(page.context().pages().length,pagesBefore);
       if(mobile) await page.getByRole("button",{name:"Continuer au clavier"}).click();
       else {
         await page.locator("#device").selectOption("mic");
