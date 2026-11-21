@@ -35,7 +35,7 @@ export const models = () => [
   ...new Set(
     (
       process.env.AI_MODELS ||
-      [process.env.ANSWER_MODEL || "gpt-4o-mini", "gpt-4.1-mini"].join(",")
+      [process.env.ANSWER_MODEL || "gpt-4.1-mini", "gpt-4.1-mini"].join(",")
     )
       .split(",")
       .map((x) => x.trim())

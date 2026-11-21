@@ -300,26 +300,10 @@ document
   .querySelectorAll("[data-close]")
   .forEach((b) => (b.onclick = () => b.closest("dialog").close()));
 el("back").onclick = () => (stage === 2 ? showStage(false) : wizard.close());
-el("importJob").onclick = async () => {
-  const b = el("importJob");
-  if (!fields.job_url.value || !fields.job_url.reportValidity()) {
-    fields.job_url.focus();
-    return;
-  }
-  b.disabled = true;
-  el("wizardStatus").textContent = "Lecture de l’offre…";
-  try {
-    const r = await api(
-      root + "import-job",
-      json("POST", { url: fields.job_url.value }),
-    );
-    fields.offer.value = r.text;
-    el("wizardStatus").textContent = "Vérifiez la description importée.";
-  } catch (e) {
-    el("wizardStatus").textContent = e.message;
-  } finally {
-    b.disabled = false;
-  }
+el("offerHelp").onclick = () => {
+  const expanded=el("offerHelp").getAttribute("aria-expanded") !== "true";
+  el("offerHelp").setAttribute("aria-expanded",String(expanded));
+  el("offerHint").hidden=!expanded;
 };
 for (const [id, kind] of [
   ["wizardResume", "resumes"],

@@ -19,7 +19,8 @@ let transcribing = Promise.resolve(),
   saving = Promise.resolve(),
   backlog = 0,
   answering = false,
-  closed = false;
+  closed = false,
+  resolving = false;
 function addText(parent, tag, text) {
   const n = document.createElement(tag);
   n.textContent = text;
@@ -90,11 +91,12 @@ function enterRoom() {
 function guide() {
   const mic = el("device").value === "mic";
   el("service").parentElement.hidden = mic;
+  el("includeMicLabel").hidden = mic;
   el("guide").textContent = mic
     ? "Placez l’autre appareil en haut-parleur près du micro. Seul le micro de cet appareil sera capté."
     : "Ouvrez votre appel " +
       el("service").value +
-      " dans un onglet. Sélectionnez cet onglet au partage et activez le son de l’onglet. Votre micro sera également utilisé.";
+      " dans un onglet. Sélectionnez cet onglet au partage et activez le son de l’onglet. Activez « Inclure aussi ma voix » si vous souhaitez transcrire également vos réponses.";
 }
 el("device").onchange = el("service").onchange = guide;
 async function suggest(row, web = session.web ? "auto" : false) {
@@ -103,7 +105,19 @@ async function suggest(row, web = session.web ? "auto" : false) {
   el("answer").disabled = true;
   el("roomStatus").textContent = "Préparation de la réponse…";
   try {
-    const question = row.prompt || row.q;
+    let question = row.prompt || row.q;
+    if(row.audioQuestion){
+      const previous=rows.slice(0,rows.indexOf(row)).filter(item=>item.a).at(-1);
+      el("roomStatus").textContent="Identification de la question…";
+      const focus=await api("/api/focus-question",json("POST",{transcript:question,previousQuestion:previous?.prompt||previous?.q||""}));
+      if(focus.needs_clarification){
+        el("question").value=question;
+        throw new Error("Je n’ai pas identifié une demande complète. Corrigez la question ci-dessus puis réessayez.");
+      }
+      question=focus.question;row.prompt=question;
+      el("question").value=question;
+      el("roomStatus").textContent="Réponse à la question identifiée…";
+    }
     const res = await apiFetch(
       "/api/answer",
       json("POST", {
@@ -134,11 +148,12 @@ async function suggest(row, web = session.web ? "auto" : false) {
     el("roomStatus").textContent = "";
     render();
     await save();
+    if(el("question").value===question)el("question").value="";
   } catch (error) {
     el("roomStatus").textContent = error.message;
   } finally {
     answering = false;
-    el("answer").disabled = false;
+    el("answer").disabled = resolving;
   }
 }
 function append(question) {
@@ -216,17 +231,25 @@ function captureChunk() {
                   : "webm"),
           );
           body.set("language", el("spokenLanguage").value);
+          body.set("previous_text", rows.slice(-2).map(item=>item.q).join(" ").slice(-500));
           const result = await api("/api/transcribe", { method: "POST", body });
           if (rows.length === 0) refreshTrial();
           if (result.text?.trim() && !closed) {
             const row = append(result.text.trim());
             if (
-              session.auto_answer &&
+              session.auto_answer && !resolving &&
               /[?？]|^(comment|pourquoi|présentez|décrivez|quel|what|how|why)/i.test(
                 row.q,
               )
             )
-              answerQueue = answerQueue.then(() => closed || row.a ? undefined : suggest(row));
+              answerQueue = answerQueue.then(() => {
+                if(closed || resolving || row.a)return;
+                row.audioQuestion=true;
+                const index=rows.indexOf(row);
+                const previousIndex=rows.slice(0,index).findLastIndex(item=>item.a);
+                row.prompt=rows.slice(previousIndex+1,index+1).map(item=>item.q).join(" ").slice(-24000);
+                return suggest(row);
+              });
           }
         })
         .catch((e) => {
@@ -259,8 +282,8 @@ function captureChunk() {
     const rms = Math.sqrt(audioSamples.reduce((sum,value)=>sum+value*value,0)/audioSamples.length);
     const now = performance.now();
     if (rms > 0.012) { speechDetected = true; lastSpeech = now; }
-    const endOfPhrase = speechDetected && now-lastSpeech > 650 && now-startedAt > 900;
-    if (endOfPhrase || now-startedAt >= 4500) r.stop();
+    const endOfPhrase = speechDetected && now-lastSpeech > 900 && now-startedAt > 900;
+    if (endOfPhrase || now-startedAt >= 6000) r.stop();
   }, 100);
 }
 el("connectForm").onsubmit = async (event) => {
@@ -282,10 +305,12 @@ el("connectForm").onsubmit = async (event) => {
           "Le partage ne contient aucun son. Choisissez un onglet avec le son activé.",
         );
     }
-    const mic = await devices.getUserMedia({
-      audio: { echoCancellation: true, noiseSuppression: true },
-    });
-    sources.push(mic);
+    if(el("device").value==="mic" || el("includeMic").checked){
+      const mic = await devices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      });
+      sources.push(mic);
+    }
     const Audio = window.AudioContext || window.webkitAudioContext;
     audioContext = new Audio();
     await audioContext.resume();
@@ -314,7 +339,7 @@ el("connectForm").onsubmit = async (event) => {
     el("audioStatus").textContent =
       el("device").value === "mic"
         ? "Micro actif"
-        : "Micro et son de l’onglet actifs";
+        : el("includeMic").checked ? "Micro et son de l’onglet actifs" : "Son de l’onglet actif";
   } catch (e) {
     release();
     el("connectStatus").textContent =
@@ -337,37 +362,29 @@ el("audioButton").onclick = async () => {
 };
 el("ask").onsubmit = async (event) => {
   event.preventDefault();
-  if (answering) return;
-  const typed = el("question").value.trim();
-  if (!typed) {
-    if (recorder?.state === "recording") {
-    el("answer").disabled = true;
-    const done = activeChunk;
-    recorder.stop();
-    await done;
+  if(answering || resolving)return;
+  resolving=true;el("answer").disabled=true;
+  const typed=el("question").value.trim();
+  try{
+    let captured;
+    if(!typed){
+      el("roomStatus").textContent="Transcription des paroles au moment du clic…";
+      if(recorder?.state==="recording"){
+        const done=activeChunk;recorder.stop();await done;
+      }
+      captured=await transcribing.then(()=>rows.slice());
     }
-    await transcribing;
-    el("answer").disabled = false;
-  }
-  const row = typed ? append(typed) : rows.at(-1);
-  if (!row) {
-    el("roomStatus").textContent =
-      "Saisissez une question ou connectez le micro.";
-    return;
-  }
-  if (!typed && !row.a) {
-    const sinceLast = rows.slice(rows.findLastIndex((item) => item.a) + 1);
-    row.prompt = sinceLast
-      .slice(-20)
-      .map((item) => item.q)
-      .join(" ")
-      .slice(-12000);
-  }
-  el("question").value = "";
-  await suggest(
-    row,
-    session.web && { auto: "auto", on: true, off: false }[el("web").value],
-  );
+    const row=typed?append(typed):captured.at(-1);
+    if(!row)throw new Error("Saisissez une question ou connectez le micro.");
+    if(!typed){
+      const previous=captured.slice(0,-1).findLastIndex(item=>item.a);
+      row.prompt=captured.slice(previous+1).map(item=>item.q).join(" ").slice(-24000);
+      row.audioQuestion=true;
+    }
+    el("question").value="";
+    await suggest(row,session.web && {auto:"auto",on:true,off:false}[el("web").value]);
+  }catch(error){el("roomStatus").textContent=error.message;}
+  finally{resolving=false;el("answer").disabled=false;}
 };
 async function leaveSession(event) {
   event.preventDefault();

@@ -103,28 +103,18 @@
                 />Simulation</label
               >
             </div>
-            <label
-              >Lien de l’offre
-              <div class="row">
-                <input
-                  name="job_url"
-                  type="url"
-                  placeholder="https://…"
-                  aria-label="Lien de l’offre"
-                /><button type="button" id="importJob">Importer</button>
-              </div></label
-            >
             <div class="cols">
               <label>Entreprise<input name="company" maxlength="200" /></label
               ><label>Poste visé<input name="role" maxlength="200" /></label>
             </div>
-            <label
-              >Description du poste<textarea
+            <div class="offer-label"><label for="offer">Description du poste</label><button type="button" id="offerHelp" aria-label="Aide pour la description du poste" aria-expanded="false" aria-controls="offerHint">i</button></div>
+            <p id="offerHint" hidden>Copiez tout le texte de l’offre d’emploi depuis le site où vous l’avez trouvée, puis collez-le dans la description du poste ci-dessous.</p>
+            <div><textarea id="offer"
                 name="offer"
                 rows="4"
                 maxlength="16000"
               ></textarea>
-            </label>
+            </div>
             <label>CV<select name="resume_id"></select></label
             ><label class="upload-small"
               >Ajouter un CV<input

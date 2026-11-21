@@ -5,6 +5,7 @@
 !workspace.js
 !oauth.js
 !access.js
+!question-focus.js
 !accounts.js
 !billing.js
 !practice.js

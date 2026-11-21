@@ -48,6 +48,13 @@ before(async () => {
       res.statusCode=401;
       return res.end(JSON.stringify({error:{message:"Expired key",type:"invalid_request_error",code:"expired_secret_key"}}));
     }
+    if (providerBody.messages?.[0]?.content?.startsWith("Identifie la dernière demande")) {
+      const data=JSON.parse(providerBody.messages.at(-1).content);
+      return res.end(JSON.stringify({choices:[{message:{content:JSON.stringify({question:"Quelle est votre question ?",excerpt:data.transcript,needs_clarification:false})}}]}));
+    }
+    if(providerBody.messages?.[0]?.content?.startsWith("Vérifie les faits personnels")){
+      return res.end(JSON.stringify({choices:[{message:{content:JSON.parse(providerBody.messages.at(-1).content).draft}}]}));
+    }
     if (providerBody.stream) {
       res.setHeader("Content-Type", "text/event-stream");
       res.end('data: {"choices":[{"delta":{"content":"Réponse de test."}}]}\n\ndata: {"choices":[],"usage":{"prompt_tokens":10,"completion_tokens":4}}\n\ndata: [DONE]\n\n');
@@ -345,8 +352,11 @@ test("WebKit mobile et Edge exécutent le parcours candidat", { skip: !process.e
       await page.getByRole("heading",{name:"Entretien blanc",exact:true}).waitFor();
       await page.getByRole("button",{name:"Créer un entretien blanc"}).click();
       const wiz=page.locator("#wizard");
+      assert.equal(await wiz.locator('[name="job_url"]').count(),0);
+      await wiz.getByRole("button",{name:"Aide pour la description du poste"}).click();
+      await wiz.getByText(/Copiez tout le texte de l’offre/).waitFor();
       await wiz.getByLabel("Entreprise",{exact:true}).fill("Atelier Test");
-      await wiz.getByLabel("Description du poste").fill("Acheter des composants.");
+      await wiz.getByLabel("Description du poste",{exact:true}).fill("Acheter des composants.");
       await wiz.locator("#wizardResume").setInputFiles({name:"exemple.txt",mimeType:"text/plain",buffer:Buffer.from("Parcours en logistique et achats.")});
       await wiz.getByText("Fichier importé et sélectionné.").waitFor();
       assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
@@ -376,10 +386,14 @@ test("WebKit mobile et Edge exécutent le parcours candidat", { skip: !process.e
         await page.getByText("● Écoute en cours").waitFor();
         await page.locator("#turns").getByText("Euh, j’ai résolu le problème.").first().waitFor({timeout:7000});
         await page.getByRole("button",{name:"Arrêter l’écoute"}).click();
+        await page.getByRole("button",{name:"Répondre",exact:true}).click();
+        await page.locator("#answers article strong").getByText("Quelle est votre question ?").waitFor();
+        await page.waitForFunction(()=>!document.querySelector("#answer").disabled);
+        assert.equal(await page.locator("#question").inputValue(),"");
       }
       await page.getByLabel("Question à traiter").fill("Pourquoi ce poste ?");
       await page.getByRole("button",{name:"Répondre",exact:true}).click();
-      await page.locator("#answers article p").getByText("Réponse de test.").waitFor();
+      await page.locator("#answers article p").getByText("Réponse de test.").last().waitFor();
       await page.getByRole("link",{name:"Quitter"}).click();
       await page.waitForURL("**/dashboard.html#sessions");
       await page.getByRole("heading",{name:"Historique des sessions"}).waitFor();

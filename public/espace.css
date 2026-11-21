@@ -801,3 +801,5 @@
   .desk #wizard form { display: flex; flex-direction: column; }
   .desk #wizard aside { flex-shrink: 0; }
 }
+
+.offer-label{display:flex;align-items:center;gap:8px}.desk #offerHelp{border-radius:50%;width:36px;height:36px;padding:0;font-weight:700}.desk #offerHint{font-size:.9rem;line-height:1.5;color:var(--ui-muted)}
