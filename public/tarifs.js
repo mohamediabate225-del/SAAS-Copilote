@@ -10,6 +10,10 @@ function node(tag, text) {
 }
 async function load() {
   const result = await api("/api/billing/plans");
+  if (result.free_access) {
+    document.querySelector("main").innerHTML = '<section class="surface"><h1>Tout est ouvert pendant les tests</h1><p>Profitez gratuitement du copilote, des simulations, des CV, des documents et des portraits.</p><p>Votre accès continue après les dix minutes et les dix premières sessions.</p><a class="action" href="/dashboard.html">Ouvrir mon tableau de bord</a></section>';
+    return;
+  }
   if (!result.plans.length) return;
   for (const plan of result.plans) {
     const article = node("article", "");

@@ -23,10 +23,7 @@ function display() {
   el("status").textContent = "";
 }
 function enter() {
-  const target = new URLSearchParams(location.search).get("retour") || "";
-  const allowed =
-    /^\/(?:dashboard\.html(?:#[a-z]+)?|studio\.html\?session=[a-f0-9-]{36}|entrainement\.html|index\.html|tarifs\.html)$/;
-  location.replace(allowed.test(target) ? target : "/dashboard.html");
+  location.replace("/dashboard.html");
 }
 form.addEventListener("submit", async (event) => {
   event.preventDefault();

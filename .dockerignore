@@ -4,6 +4,7 @@
 !server.js
 !workspace.js
 !oauth.js
+!access.js
 !accounts.js
 !billing.js
 !practice.js

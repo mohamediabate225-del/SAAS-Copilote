@@ -44,6 +44,10 @@ before(async () => {
     res.setHeader("Content-Type", "application/json");
     if (req.url.includes("/audio/transcriptions")) return res.end(JSON.stringify({ text: "Euh, j’ai résolu le problème." }));
     providerBody = JSON.parse(Buffer.concat(chunks));
+    if(providerBody.messages?.at(-1)?.content === "simulate-expired-key") {
+      res.statusCode=401;
+      return res.end(JSON.stringify({error:{message:"Expired key",type:"invalid_request_error",code:"expired_secret_key"}}));
+    }
     if (providerBody.stream) {
       res.setHeader("Content-Type", "text/event-stream");
       res.end('data: {"choices":[{"delta":{"content":"Réponse de test."}}]}\n\ndata: {"choices":[],"usage":{"prompt_tokens":10,"completion_tokens":4}}\n\ndata: [DONE]\n\n');
@@ -55,7 +59,7 @@ before(async () => {
   child = spawn(process.execPath, ["server.js"], {
     env: {
       ...process.env,
-      NODE_ENV: "test", HOST: "127.0.0.1", PORT: "0",
+      BILLING_ENABLED: "false", NODE_ENV: "test", HOST: "127.0.0.1", PORT: "0",
       OPENAI_API_KEY: "faux-test-local", OPENAI_BASE_URL: urlFor(fixture) + "/v1",
       COPILOTE_DB_PATH: database,
       PREVIEW_TOKEN: "", PREVIEW_PASSWORD: "", APP_BASE_URL: "", APP_PASSWORD: "",
@@ -117,7 +121,7 @@ test("compte, préparation, essai, analyse, reprise, isolation et export", async
   const other = await register("autre@example.test");
   const auth = { cookie };
   const trial = async () => (await request("/api/account/trial", auth)).json();
-  assert.equal((await trial()).state, "ready");
+  assert.equal((await trial()).state, "free");
   assert.equal((await request("/api/account/profile", { ...auth, method: "PUT", body: { goals: "Achats" } })).status, 200);
   const cv = new FormData();
   cv.set("name", "CV de test");
@@ -135,8 +139,8 @@ test("compte, préparation, essai, analyse, reprise, isolation et export", async
   assert.equal((await role.json()).question, question);
   assert.match(providerBody.messages.at(-1).content, /demande une précision/i);
   const active = await trial();
-  assert.equal(active.state, "active");
-  assert.ok(active.remaining_seconds > 590 && active.remaining_seconds <= 600);
+  assert.equal(active.state, "free");
+  assert.equal(active.remaining_seconds,null);
 
   const spoken = new FormData();
   spoken.set("audio", new Blob(["fixture"], { type: "audio/webm" }), "test.webm");
@@ -190,8 +194,8 @@ test("compte, préparation, essai, analyse, reprise, isolation et export", async
   const db = new DatabaseSync(database);
   db.prepare("UPDATE users SET trial_started=? WHERE email=?").run(Date.now() - 601000, "premier@example.test");
   db.close();
-  assert.equal((await trial()).state, "expired");
-  assert.equal((await request("/api/answer", { ...auth, method: "POST", body: { question } })).status, 402);
+  assert.equal((await trial()).state, "free");
+  assert.equal((await request("/api/answer", { ...auth, method: "POST", body: { question } })).status, 200);
   assert.equal((await request(path, auth)).status, 200);
   assert.equal((await request("/api/billing/checkout", { ...auth, method: "POST", body: { plan: "plus" } })).status, 503);
   assert.equal((await request("/api/account/logout", { ...auth, method: "POST" })).status, 200);
@@ -214,7 +218,10 @@ test("CV TXT transmis à la simulation et questions simples reconnues", async ()
   const result = await request("/api/training/question", { cookie, method: "POST", body: { context: { profile: cv.content } } });
   assert.equal(result.status, 200);
   assert.match(providerBody.messages[0].content, /fournisseurs/);
-  for (const question of ["Tu t'appelles comment ?", "Tu vas bien ?"]) {
+  const unavailable=await request("/api/answer",{cookie,method:"POST",body:{question:"simulate-expired-key"}});
+  assert.equal(unavailable.status,502);
+  assert.match((await unavailable.json()).error,/clé API a expiré/);
+  for (const question of ["Tu t'appelles comment ?", "Tu vas bien ?", "Est-ce que tu m’entends ? Est-ce que tu entends ? Est-ce que tu entends ?", "Comment s’appelle... Comment tu t’appelles ?"]) {
     const result = await request("/api/answer", { cookie, method: "POST", body: { question } });
     assert.equal(result.status, 200);
     assert.doesNotMatch(await result.text(), /pas de question/);
@@ -289,7 +296,7 @@ test("bibliothèque privée, contexte de session, transcription et quota",async(
   await request(path+"/"+mock.id,{method:"DELETE",cookie:owner});
   assert.equal((await request("/api/practice/"+mock.id,{cookie:owner})).status,404);
   for(let i=0;i<8;i++)assert.equal((await request(path,{method:"POST",cookie:owner,body})).status,201);
-  assert.equal((await request(path,{method:"POST",cookie:owner,body})).status,402);
+  assert.equal((await request(path,{method:"POST",cookie:owner,body})).status,201);
 });
 
 test("WebKit mobile et Edge exécutent le parcours candidat", { skip: !process.env.COPILOTE_PLAYWRIGHT, timeout: 180000 }, async () => {
@@ -323,7 +330,7 @@ test("WebKit mobile et Edge exécutent le parcours candidat", { skip: !process.e
       }
       await page.setViewportSize({ width: widths[0], height: 820 });
       await page.goto(base + "/");
-      await page.getByRole("link", { name: "Essayer 10 minutes" }).click();
+      await page.getByRole("link", { name: "Essayer gratuitement" }).click();
       const registration = page.locator("#authform");
       await registration.getByLabel("Prénom").fill("Camille");
       await registration.getByLabel("Nom", { exact: true }).fill("Test");
@@ -332,8 +339,8 @@ test("WebKit mobile et Edge exécutent le parcours candidat", { skip: !process.e
       await registration.getByLabel("Confirmer le mot de passe").fill(password);
       await registration.getByRole("button", { name: "Créer mon compte" }).click();
       await page.waitForURL("**/dashboard.html");
-      await page.getByRole("button",{name:"Entretien blanc",exact:true}).click();
-      await page.getByRole("button",{name:"Un ami"}).click();
+      await page.getByRole("heading",{name:"Historique des sessions"}).waitFor();
+      await page.goto(base+"/dashboard.html#mock");
       await page.getByRole("heading",{name:"Entretien blanc",exact:true}).waitFor();
       await page.getByRole("button",{name:"Créer un entretien blanc"}).click();
       const wiz=page.locator("#wizard");
@@ -361,9 +368,8 @@ test("WebKit mobile et Edge exécutent le parcours candidat", { skip: !process.e
         await page.locator("#consent").check();
         await page.getByRole("button",{name:"Connecter l’audio",exact:true}).click();
         await page.getByText("● Écoute en cours").waitFor();
-        await new Promise(resolve=>setTimeout(resolve,1250));
+        await page.locator("#turns").getByText("Euh, j’ai résolu le problème.").first().waitFor({timeout:7000});
         await page.getByRole("button",{name:"Arrêter l’écoute"}).click();
-        await page.locator("#turns").getByText("Euh, j’ai résolu le problème.").waitFor();
       }
       await page.getByLabel("Question à traiter").fill("Pourquoi ce poste ?");
       await page.getByRole("button",{name:"Répondre",exact:true}).click();
@@ -372,7 +378,7 @@ test("WebKit mobile et Edge exécutent le parcours candidat", { skip: !process.e
       await page.waitForURL("**/dashboard.html#sessions");
       await page.getByRole("heading",{name:"Historique des sessions"}).waitFor();
       await page.goto(base+"/entrainement.html");
-      await page.getByText("Temps d’essai restant").waitFor();
+      await page.getByText("Accès gratuit · toutes les fonctionnalités sont ouvertes.").waitFor();
       await page.getByRole("navigation", { name: "Navigation principale" }).getByRole("link", { name: "Mon espace" }).click();
       const preparation = page.locator("#preparation");
       await preparation.getByLabel("Poste visé").fill("Responsable achats");
@@ -384,7 +390,7 @@ test("WebKit mobile et Edge exécutent le parcours candidat", { skip: !process.e
       await page.waitForFunction(() => document.querySelector('#setup-form [name="role"]').value === "Responsable achats");
       await page.getByRole("button", { name: "Commencer" }).click();
       await page.getByRole("heading", { name: question }).waitFor();
-      await page.getByText("Temps d’essai restant").waitFor();
+      await page.getByText("Accès gratuit · toutes les fonctionnalités sont ouvertes.").waitFor();
       await page.getByLabel("Votre réponse").fill("J’ai anticipé un risque fournisseur et proposé un autre délai.");
       await page.getByRole("button", { name: "Sauvegarder et quitter" }).click();
       await page.locator("#history-list li").filter({hasText:"Responsable achats"}).getByRole("button", { name: "Reprendre", exact: true }).click();

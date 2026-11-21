@@ -1,3 +1,4 @@
+import { freeAccess } from "./access.js";
 import { randomUUID } from "node:crypto";
 import { db, requireUser } from "./accounts.js";
 import { clean, cleanContext } from "./practice.js";
@@ -72,6 +73,7 @@ const safeUrl = (value) => {
 db.exec(`CREATE TABLE IF NOT EXISTS session_usage(user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, used INTEGER NOT NULL DEFAULT 0);
 INSERT OR IGNORE INTO session_usage SELECT user_id, count(*) FROM call_sessions GROUP BY user_id;`);
 function remainingSessions(id) {
+  if (freeAccess) return null;
   if (
     db
       .prepare(
@@ -89,7 +91,7 @@ function remainingSessions(id) {
 }
 export function registerWorkspace(app, upload, openai) {
   app.get("/api/workspace/config", requireUser, (req, res) =>
-    res.json({ models: models(), remaining: remainingSessions(req.user.id) }),
+    res.json({ free_access: freeAccess, models: models(), remaining: remainingSessions(req.user.id) }),
   );
   app.get("/api/workspace/onboarding", requireUser, (req, res) =>
     res.json(

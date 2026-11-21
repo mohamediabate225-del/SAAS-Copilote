@@ -1,3 +1,4 @@
+import { freeAccess } from "./access.js";
 import { createHmac, scryptSync, timingSafeEqual } from "node:crypto";
 import express from "express";
 import { db, requireUser, startTrial } from "./accounts.js";
@@ -25,7 +26,7 @@ const plans = {
 const secret = process.env.STRIPE_SECRET_KEY;
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 const baseUrl = process.env.APP_BASE_URL;
-const enabled = Boolean(secret && webhookSecret && baseUrl && Object.values(plans).some(plan => plan.price));
+const enabled = !freeAccess && Boolean(secret && webhookSecret && baseUrl && Object.values(plans).some(plan => plan.price));
 const latestSubscription = db.prepare("SELECT * FROM subscriptions WHERE user_id=? ORDER BY status IN ('active','trialing') DESC, event_time DESC LIMIT 1");
 const dayKey = () => new Date().toISOString().slice(0, 10);
 const inUse = (subscription) => subscription && ["active", "trialing"].includes(subscription.status);
@@ -39,8 +40,13 @@ export function recordUsage(req, usage, audioBytes = 0) {
 
 export const aiLimits = [
   requireUser,
-  limitRequests({ limit: 18, windowMs: 60000, key: req => req.user.id }),
+  limitRequests({ limit: freeAccess ? 120 : 18, windowMs: 60000, key: req => req.user.id }),
   (req, res, next) => {
+    if (freeAccess) {
+      req.usageDay = dayKey();
+      db.prepare("INSERT INTO ai_usage(user_id,day,calls) VALUES(?,?,1) ON CONFLICT(user_id,day) DO UPDATE SET calls=calls+1").run(req.user.id,req.usageDay);
+      return next();
+    }
     const subscription = latestSubscription.get(req.user.id);
     const trial = inUse(subscription) ? null : startTrial(req.user);
     if (trial?.state === "expired") {
@@ -141,7 +147,7 @@ export function registerBilling(app) {
     res.status(204).end();
   });
   app.get("/api/billing/plans", async (_req, res) => {
-    if (!enabled) return res.json({ enabled: false, plans: [] });
+    if (!enabled) return res.json({ enabled: false, free_access: freeAccess, plans: [] });
     try {
       const available = await Promise.all(Object.entries(plans).filter(([, plan]) => plan.price).map(async ([id, plan]) => {
         const result = await stripe(`prices/${encodeURIComponent(plan.price)}`);
@@ -154,7 +160,7 @@ export function registerBilling(app) {
   });
   app.get("/api/billing/status", requireUser, (req, res) => {
     const subscription = latestSubscription.get(req.user.id);
-    res.json({ enabled, active: Boolean(inUse(subscription)), portal: Boolean(enabled && subscription?.customer), plan: subscription?.plan || "" });
+    res.json({ free_access: freeAccess, enabled, active: Boolean(inUse(subscription)), portal: Boolean(enabled && subscription?.customer), plan: subscription?.plan || "" });
   });
   const limitBilling = limitRequests({ limit: 5, windowMs: 60000, key: req => req.user.id });
   app.post("/api/billing/checkout", requireUser, limitBilling, async (req, res) => {

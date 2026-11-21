@@ -48,7 +48,7 @@ export function setupTrial(banner) {
   function render() {
     const seconds = Math.max(0, Math.ceil((deadline - Date.now()) / 1000)) || 0;
     const active = state === "active" && seconds > 0;
-    const message = active ? "Temps d’essai restant"
+    const message = state === "free" ? "Accès gratuit · toutes les fonctionnalités sont ouvertes." : active ? "Temps d’essai restant"
       : state === "ready" ? "10 minutes d’essai dès votre première action IA."
       : state === "active" || state === "expired" ? "Essai terminé. Vos préparations et débriefs restent accessibles."
       : state === "guest" ? "Connectez-vous pour accéder à l’IA."
@@ -69,7 +69,7 @@ export function setupTrial(banner) {
   async function refresh() {
     try {
       const [trial, billing] = await Promise.all([api("/api/account/trial"), api("/api/billing/status")]);
-      state = billing.active ? "paid" : trial.state;
+      state = billing.free_access ? "free" : billing.active ? "paid" : trial.state;
       deadline = Date.now() + trial.remaining_seconds * 1000;
     } catch (error) {
       state = error.status === 401 ? "guest" : "error";

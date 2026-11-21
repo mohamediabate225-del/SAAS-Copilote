@@ -87,9 +87,7 @@ for (const kind of ["login", "register"]) {
     act(form.querySelector("button"), async () => {
       await api("/api/account/" + kind, json("POST", data));
       form.reset();
-      if (destination) { location.assign(destination); return; }
-      showMessage(status, "Vous êtes connecté.");
-      await refresh();
+      location.assign("/dashboard.html");
     });
   });
 }

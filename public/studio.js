@@ -11,7 +11,10 @@ let session,
   recorder,
   timer,
   capturing = false,
-  activeChunk;
+  activeChunk,
+  analyser,
+  audioSamples;
+let answerQueue = Promise.resolve();
 let transcribing = Promise.resolve(),
   saving = Promise.resolve(),
   backlog = 0,
@@ -107,7 +110,7 @@ async function suggest(row, web = session.web ? "auto" : false) {
         question,
         session_id: id,
         web,
-        history: rows.filter((x) => x !== row && x.a).slice(-5),
+        history: rows.filter((x) => x !== row && x.a && !/pas de question détectée/i.test(x.a)).slice(-5),
       }),
     );
     if (!res.ok)
@@ -147,7 +150,7 @@ function append(question) {
 }
 function release() {
   capturing = false;
-  clearTimeout(timer);
+  clearInterval(timer);
   for (const source of sources)
     source.getTracks().forEach((track) => track.stop());
   sources = [];
@@ -161,7 +164,7 @@ function release() {
 }
 async function stopAudio() {
   capturing = false;
-  clearTimeout(timer);
+  clearInterval(timer);
   const done = activeChunk;
   if (recorder?.state === "recording") recorder.stop();
   release();
@@ -181,6 +184,8 @@ function captureChunk() {
   );
   recorder = r;
   const parts = [];
+  let speechDetected = false, lastSpeech = performance.now();
+  const startedAt = performance.now();
   let finish;
   activeChunk = new Promise((resolve) => {
     finish = resolve;
@@ -189,9 +194,9 @@ function captureChunk() {
     if (e.data.size) parts.push(e.data);
   };
   r.onstop = () => {
-    clearTimeout(timer);
+    clearInterval(timer);
     recorder = null;
-    if (parts.length && !closed) {
+    if (parts.length && speechDetected && !closed) {
       const blob = new Blob(parts, { type: r.mimeType }),
         mime = r.mimeType.split(";")[0];
       backlog++;
@@ -216,12 +221,11 @@ function captureChunk() {
             const row = append(result.text.trim());
             if (
               session.auto_answer &&
-              !answering &&
               /[?？]|^(comment|pourquoi|présentez|décrivez|quel|what|how|why)/i.test(
                 row.q,
               )
             )
-              await suggest(row);
+              answerQueue = answerQueue.then(() => closed || row.a ? undefined : suggest(row));
           }
         })
         .catch((e) => {
@@ -242,14 +246,21 @@ function captureChunk() {
     }
   };
   r.onerror = () => {
+    finish();
     release();
     el("audioStatus").textContent =
       "Capture interrompue. Reconnectez le micro.";
   };
   r.start();
-  timer = setTimeout(() => {
-    if (r.state === "recording") r.stop();
-  }, 12000);
+  timer = setInterval(() => {
+    if (r.state !== "recording") return;
+    analyser.getFloatTimeDomainData(audioSamples);
+    const rms = Math.sqrt(audioSamples.reduce((sum,value)=>sum+value*value,0)/audioSamples.length);
+    const now = performance.now();
+    if (rms > 0.012) { speechDetected = true; lastSpeech = now; }
+    const endOfPhrase = speechDetected && now-lastSpeech > 650 && now-startedAt > 900;
+    if (endOfPhrase || now-startedAt >= 4500) r.stop();
+  }, 100);
 }
 el("connectForm").onsubmit = async (event) => {
   event.preventDefault();
@@ -291,6 +302,10 @@ el("connectForm").onsubmit = async (event) => {
       );
     }
     mix = destination.stream;
+    analyser = audioContext.createAnalyser();
+    analyser.fftSize = 1024;
+    audioSamples = new Float32Array(analyser.fftSize);
+    audioContext.createMediaStreamSource(mix).connect(analyser);
     capturing = true;
     captureChunk();
     enterRoom();
@@ -323,11 +338,13 @@ el("ask").onsubmit = async (event) => {
   event.preventDefault();
   if (answering) return;
   const typed = el("question").value.trim();
-  if (!typed && recorder?.state === "recording") {
+  if (!typed) {
+    if (recorder?.state === "recording") {
     el("answer").disabled = true;
     const done = activeChunk;
     recorder.stop();
     await done;
+    }
     await transcribing;
     el("answer").disabled = false;
   }
@@ -351,12 +368,14 @@ el("ask").onsubmit = async (event) => {
     session.web && { auto: "auto", on: true, off: false }[el("web").value],
   );
 };
-el("exit").onclick = async (event) => {
+async function leaveSession(event) {
   event.preventDefault();
   await stopAudio();
   await saving;
   location.assign("/dashboard.html#sessions");
-};
+}
+el("exit").onclick = leaveSession;
+document.querySelector(".studio-bar .brand").onclick = leaveSession;
 window.addEventListener("pagehide", () => {
   closed = true;
   if (recorder?.state === "recording") recorder.stop();

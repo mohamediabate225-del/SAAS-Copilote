@@ -1,3 +1,4 @@
+import { freeAccess } from "./access.js";
 import { DatabaseSync } from "node:sqlite";
 import { randomBytes, randomUUID, scryptSync, timingSafeEqual, createHash } from "node:crypto";
 import { PDFParse } from "pdf-parse";
@@ -38,6 +39,7 @@ function current(req) {
 }
 
 export function trialStatus(user) {
+  if (freeAccess) return {active:true,state:"free",remaining_seconds:null,total_seconds:null};
   const total = 600;
   if (user.trial_started == null) {
     return { active: false, state: user.trial_eligible ? "ready" : "legacy", remaining_seconds: total, total_seconds: total };
@@ -51,6 +53,7 @@ export function trialStatus(user) {
 }
 
 export function startTrial(user) {
+  if (freeAccess) return trialStatus(user);
   if (user.trial_eligible && user.trial_started == null) {
     db.prepare("UPDATE users SET trial_started=? WHERE id=? AND trial_started IS NULL").run(Date.now(), user.id);
     user.trial_started = db.prepare("SELECT trial_started FROM users WHERE id=?").get(user.id).trial_started;

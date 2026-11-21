@@ -26,6 +26,12 @@ const PORT = Number(process.env.PORT || 3100);
 const TRANSCRIBE_MODEL = process.env.TRANSCRIBE_MODEL || "gpt-4o-mini-transcribe";
 const ANSWER_MODEL = process.env.ANSWER_MODEL || "gpt-4o-mini";
 
+function aiFailure(error, fallback) {
+  return error?.status === 401
+    ? "Le service IA est indisponible car sa clé API a expiré ou est invalide. L’administrateur doit renouveler la clé."
+    : fallback;
+}
+
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, timeout: 25000, maxRetries: 1 });
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024, files: 1, fields: 8 } });
 
@@ -112,7 +118,7 @@ app.post("/api/transcribe", requireUser, upload.single("audio"), (req, res, next
     res.json({ text: (result.text || "").trim() });
   } catch (err) {
     console.error("transcribe:", err?.status || err?.name);
-    res.status(500).json({ error: "Échec de la transcription. Réessaie." });
+    res.status(500).json({ error: aiFailure(err, "Échec de la transcription. Réessaie.") });
   }
 });
 
@@ -125,6 +131,20 @@ app.post("/api/answer", aiLimits, async (req, res) => {
   if (typeof question !== "string" || !question.trim()) {
     return res.status(400).json({ error: "Question vide." });
   }
+  const lastQuestion = question.trim().split(/[?？]+/).filter(part=>part.trim()).at(-1)?.split(/\.{2,}|…/).filter(part=>part.trim()).at(-1)?.trim().replace(/[.!…]+$/g,'') || question.trim();
+  const shortReplies = {
+    fr: {audio:"Oui, je vous entends. Vous m’entendez également ?",name:"Je m’appelle",greeting:"Je vais bien, merci. Et vous ?"},
+    en: {audio:"Yes, I can hear you. Can you hear me too?",name:"My name is",greeting:"I’m well, thank you. How are you?"},
+    es: {audio:"Sí, le escucho. ¿Me escucha también?",name:"Me llamo",greeting:"Estoy bien, gracias. ¿Y usted?"},
+    de: {audio:"Ja, ich höre Sie. Können Sie mich auch hören?",name:"Ich heiße",greeting:"Mir geht es gut, danke. Und Ihnen?"}
+  };
+  const simple = shortReplies[context.language] || shortReplies.fr;
+  if (/^(?:est[- ]ce que )?(?:tu m['’]entends|vous m['’]entendez|tu entends|vous entendez)|^can you hear me$/i.test(lastQuestion) && lastQuestion.length<90)
+    return res.type("text/plain; charset=utf-8").send(simple.audio);
+  if (/^(?:comment (?:tu t['’]appelles|vous (?:vous appelez|appelez[- ]vous))|tu t['’]appelles comment|quel est (?:ton|votre) (?:nom|prénom))$/i.test(lastQuestion))
+    return res.type("text/plain; charset=utf-8").send(simple.name+" "+([req.user.first_name,req.user.last_name].filter(Boolean).join(" ")||"[votre nom]")+".");
+  if (/^(?:tu vas bien|comment (?:allez[- ]vous|vas[- ]tu))$/i.test(lastQuestion))
+    return res.type("text/plain; charset=utf-8").send(simple.greeting);
   // Avoid attributing a music preference to a candidate whose profile does not mention one.
   let webQuestion = saved?.web && req.body?.web === true ? question.slice(0,2000) : '';
   if (saved?.web && req.body?.web === 'auto') {
@@ -144,12 +164,6 @@ app.post("/api/answer", aiLimits, async (req, res) => {
       const sources = (result.output||[]).flatMap(x=>x.content||[]).flatMap(x=>x.annotations||[]).filter(x=>x.type==='url_citation').map(x=>`${x.title}: ${x.url}`);
       return res.type('text/plain; charset=utf-8').send(result.output_text+(sources.length?'\n\nSources\n'+[...new Set(sources)].join('\n'):''));
     } catch { return res.status(502).json({error:'Recherche web indisponible. Désactivez la recherche pour répondre avec les connaissances générales.'}); }
-  }
-  if (/^(?:tu (?:t['’]appelles comment|vas bien)|comment (?:tu t['’]appelles|vous appelez[- ]vous|allez[- ]vous)|quel est (?:ton|votre) (?:nom|prénom))\s*[?.!]*$/i.test(question.trim())) {
-    const nameQuestion = /appell|nom|prénom/i.test(question);
-    return res.type("text/plain; charset=utf-8").send(nameQuestion
-      ? `Je m’appelle ${saved ? [req.user.first_name,req.user.last_name].filter(Boolean).join(" ") : "[votre prénom et votre nom]"}. Ravi de faire votre connaissance.`
-      : "Je vais bien, merci. Et vous ?");
   }
   const profile = typeof context?.profile === "string" ? context.profile : "";
   if (/\bwhat\s+(?:kind|type|sort)\s+of\s+music\b/i.test(question) &&
@@ -193,7 +207,7 @@ app.post("/api/answer", aiLimits, async (req, res) => {
   } catch (err) {
     console.error("answer:", err?.status || err?.name);
     if (res.headersSent) return res.destroy();
-    res.status(502).json({ error: "Échec de la génération. Réessaie." });
+    res.status(502).json({ error: aiFailure(err, "Échec de la génération. Réessaie.") });
   }
 });
 
@@ -231,7 +245,7 @@ app.post("/api/training/question", aiLimits, async (req, res) => {
     res.json({ question });
   } catch (err) {
     console.error("training question:", err?.status || err?.name);
-    res.status(500).json({ error: "Impossible de formuler la question du recruteur." });
+    res.status(500).json({ error: aiFailure(err, "Impossible de formuler la question du recruteur.") });
   }
 });
 
@@ -264,7 +278,7 @@ app.post("/api/training/feedback", aiLimits, async (req, res) => {
     res.json({ coach, delivery: deliveryMetrics(req.body?.delivery, answer) });
   } catch (err) {
     console.error("training feedback:", err?.status || err?.name);
-    res.status(502).json({ error: "Le débriefing est indisponible. Votre réponse peut être analysée de nouveau." });
+    res.status(502).json({ error: aiFailure(err, "Le débriefing est indisponible. Votre réponse peut être analysée de nouveau.") });
   }
 });
 

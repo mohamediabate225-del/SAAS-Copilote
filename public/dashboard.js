@@ -86,7 +86,7 @@ function onboarding(second = false) {
 }
 function credits() {
   el("credits").textContent =
-    config.remaining === null
+    config.free_access ? "Accès gratuit" : config.remaining === null
       ? "Abonnement actif"
       : config.remaining +
         " session" +
@@ -409,13 +409,8 @@ form.onsubmit = async (event) => {
 window.addEventListener("hashchange", render);
 try {
   currentUser = await api("/api/account/me");
-  const [c, p] = await Promise.all([
-    api(root + "config"),
-    api(root + "onboarding"),
-  ]);
-  config = c;
-  if (!p.purpose) onboarding();
-  else await dashboard();
+  config = await api(root + "config");
+  await dashboard();
 } catch (error) {
   if (error.status === 401)
     location.replace(
