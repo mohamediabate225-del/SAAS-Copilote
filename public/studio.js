@@ -109,6 +109,7 @@ async function suggest(row, web = session.web ? "auto" : false) {
       json("POST", {
         question,
         session_id: id,
+        language: el("spokenLanguage").value,
         web,
         history: rows.filter((x) => x !== row && x.a && !/pas de question détectée/i.test(x.a)).slice(-5),
       }),
@@ -214,7 +215,7 @@ function captureChunk() {
                   ? "ogg"
                   : "webm"),
           );
-          body.set("language", session.context.language);
+          body.set("language", el("spokenLanguage").value);
           const result = await api("/api/transcribe", { method: "POST", body });
           if (rows.length === 0) refreshTrial();
           if (result.text?.trim() && !closed) {
@@ -357,10 +358,10 @@ el("ask").onsubmit = async (event) => {
   if (!typed && !row.a) {
     const sinceLast = rows.slice(rows.findLastIndex((item) => item.a) + 1);
     row.prompt = sinceLast
-      .slice(-4)
+      .slice(-20)
       .map((item) => item.q)
       .join(" ")
-      .slice(-2000);
+      .slice(-12000);
   }
   el("question").value = "";
   await suggest(
@@ -384,6 +385,7 @@ window.addEventListener("pagehide", () => {
 try {
   session = await api(path);
   rows = session.transcript || [];
+  el("spokenLanguage").value = ["fr","en","es","de","it","ja"].includes(session.context.language) ? session.context.language : "fr";
   el("callName").textContent = [session.context.role, session.context.company]
     .filter(Boolean)
     .join(" · ");

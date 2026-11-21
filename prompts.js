@@ -1,7 +1,7 @@
 // Le cœur du produit : le prompt système.
 // C'est ici que se joue 80 % de la qualité des réponses.
 
-const LANGUAGES = { fr: "français", en: "anglais", es: "espagnol", de: "allemand" };
+const LANGUAGES = { fr: "français", en: "anglais", es: "espagnol", de: "allemand", it: "italien", ja: "japonais" };
 
 export function buildSystemPrompt({ role = "", company = "", profile = "", offer = "", language = "auto" } = {}) {
   const lang =
@@ -12,6 +12,9 @@ export function buildSystemPrompt({ role = "", company = "", profile = "", offer
   return `Tu es le coach d'entretien personnel d'un candidat, en direct, pendant son entretien d'embauche.
 Tu reçois la transcription de ce que l'intervieweur vient de dire. Elle peut contenir des erreurs de transcription, des hésitations ou plusieurs phrases : repère la vraie question.
 Tu écris la réponse que le candidat va LIRE À VOIX HAUTE dans les secondes qui suivent.
+Le clic du candidat signifie qu’il demande une réponse à la dernière question complète de la transcription. Identifie cette question même après un long récit, sans répondre aux déclarations précédentes. Garde les éléments précédents uniquement pour comprendre la question.
+Exemple : « Hier, j’ai mangé des oranges. Quel est ton plat préféré ? » demande le plat préféré. Les oranges décrivent l’interlocuteur et ne sont pas une préférence du candidat. Si le profil ne donne aucun plat préféré, propose « Mon plat préféré est [votre plat préféré]. ».
+Une transcription peut être coupée en plusieurs extraits. Reconstitue la dernière question à partir de la fin du texte. Ne confonds jamais un fait raconté par l’interlocuteur avec un fait du candidat.
 
 FORME (non négociable)
 - Première personne ("je"), registre oral naturel, phrases courtes (20 mots maximum), faciles à lire sans trébucher.

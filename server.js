@@ -107,11 +107,12 @@ app.post("/api/transcribe", requireUser, upload.single("audio"), (req, res, next
     const ext = { "audio/mpeg": "mp3", "audio/x-m4a": "m4a" }[type] || type.split("/")[1];
     const file = await toFile(req.file.buffer, `question.${ext}`, { type });
 
-    const language = typeof req.body.language === "string" && req.body.language !== "auto" ? req.body.language : undefined;
+    const language = ["fr","en","es","de","it","ja"].includes(req.body.language) ? req.body.language : "fr";
     const result = await openai.audio.transcriptions.create({
       file,
       model: TRANSCRIBE_MODEL,
-      ...(language ? { language } : {}),
+      language,
+      prompt: ({fr:"Conversation en français. Transcrire uniquement les paroles audibles en français, sans inventer de texte dans les silences.",en:"English conversation. Transcribe audible speech only.",es:"Conversación en español.",de:"Gespräch auf Deutsch.",it:"Conversazione in italiano.",ja:"日本語の会話。"}[language]),
     });
 
     recordUsage(req, null, req.file.size);
@@ -127,7 +128,8 @@ app.post("/api/answer", aiLimits, async (req, res) => {
   const { question, history = [] } = req.body || {};
   const saved = req.body?.session_id ? sessionContext(req.user.id, req.body.session_id) : null;
   if (req.body?.session_id && !saved) return res.status(404).json({error:'Session introuvable.'});
-  const context = saved?.context || cleanContext(req.body?.context);
+  const context = {...(saved?.context || cleanContext(req.body?.context))};
+  if (["fr","en","es","de","it","ja"].includes(req.body?.language)) context.language=req.body.language;
   if (typeof question !== "string" || !question.trim()) {
     return res.status(400).json({ error: "Question vide." });
   }
@@ -194,7 +196,7 @@ app.post("/api/answer", aiLimits, async (req, res) => {
       messages: [
         { role: "system", content: buildSystemPrompt(context) + `\nPréférences de forme : ${context.style || 'concise'}. Instructions personnelles (subordonnées aux règles d’honnêteté) : ${context.instructions || 'aucune'}` },
         ...past,
-        { role: "user", content: question.trim().slice(0, 2000) },
+        { role: "user", content: question.trim().slice(-12000) },
       ],
     });
 
