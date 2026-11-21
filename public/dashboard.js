@@ -1,3 +1,4 @@
+import { setupDesktop } from "./desktop.js";
 import { api, json } from "./app.js";
 import {
   element,
@@ -33,11 +34,10 @@ let config,
   currentUser,
   stage,
   purpose,
-  installEvent,
   pageVersion = 0;
-window.addEventListener("beforeinstallprompt", (e) => {
-  e.preventDefault();
-  installEvent = e;
+const desktop = setupDesktop({
+  button: el("desktop"), installButton: el("installDesktop"),
+  browserLink: el("browser"), message: el("installHint"), userId: () => currentUser?.id
 });
 function onboarding(second = false) {
   el("onboard").hidden = false;
@@ -125,27 +125,9 @@ function openSession(s) {
     return;
   }
   el("browser").href = "/studio.html?session=" + encodeURIComponent(s.id);
-  el("installHint").textContent = "";
+  desktop.select(s.id);
   el("platform").showModal();
 }
-el("desktop").onclick = async () => {
-  if (matchMedia("(display-mode: standalone)").matches) {
-    location.href = el("browser").href;
-    return;
-  }
-  if (installEvent) {
-    await installEvent.prompt();
-    const choice = await installEvent.userChoice;
-    installEvent = null;
-    if (choice.outcome === "accepted") {
-      el("installHint").textContent =
-        "Copilote est installé. Retrouvez cette session dans l’application.";
-      return;
-    }
-  }
-  el("installHint").textContent =
-    "Installez Copilote depuis le menu de votre navigateur (Installer l’application ou Ajouter au Dock). Dans l’application, ouvrez cette session depuis Sessions d’appel.";
-};
 function listSessions(host, sessions, mock) {
   const title = element("div", undefined, "block-title");
   title.append(
@@ -410,7 +392,16 @@ window.addEventListener("hashchange", render);
 try {
   currentUser = await api("/api/account/me");
   config = await api(root + "config");
-  await dashboard();
+  const pending = desktop.pending();
+  if (pending) {
+    try {
+      await api(root + "sessions/" + pending);
+      location.replace("/studio.html?session=" + encodeURIComponent(pending));
+    } catch {
+      await dashboard();
+      notify("Retrouvez votre session dans l’historique.");
+    }
+  } else await dashboard();
 } catch (error) {
   if (error.status === 401)
     location.replace(
