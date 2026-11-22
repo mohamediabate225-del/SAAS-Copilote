@@ -1,4 +1,5 @@
 import express from "express";
+import { verifyEmail, consumeInvitation } from "./registration.js";
 import { randomBytes, randomUUID, scryptSync, createHash } from "node:crypto";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import { db, session } from "./accounts.js";
@@ -60,6 +61,7 @@ function resolveUser(name, claims) {
     throw new Error();
   if (db.prepare("SELECT id FROM users WHERE email=?").get(email))
     throw new Error("existing");
+  consumeInvitation(null);
   const salt = random(),
     hash = scryptSync(random(), salt, 64).toString("hex");
   db.exec("BEGIN IMMEDIATE");
@@ -81,6 +83,7 @@ function resolveUser(name, claims) {
       claims.sub,
       row.lastInsertRowid,
     );
+    verifyEmail(row.lastInsertRowid);
     db.exec("COMMIT");
     return row.lastInsertRowid;
   } catch (e) {

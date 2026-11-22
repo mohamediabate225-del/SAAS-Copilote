@@ -1,8 +1,10 @@
+import { stripe, paymentsEnabled, registerPaymentsWebhook } from "./payments.js";
+export const registerBillingWebhook = registerPaymentsWebhook;
+import { meterContext, quotaStatus, catalog } from "./quotas.js";
 import { freeAccess } from "./access.js";
-import { createHmac, scryptSync, timingSafeEqual } from "node:crypto";
-import express from "express";
-import { db, requireUser, startTrial } from "./accounts.js";
-import { equalSecret, limitRequests, secureRequest } from "./security.js";
+import { scryptSync, timingSafeEqual } from "node:crypto";
+import { db, requireUser } from "./accounts.js";
+import { limitRequests, secureRequest } from "./security.js";
 
 db.exec(`CREATE TABLE IF NOT EXISTS subscriptions (
   id TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -19,14 +21,10 @@ CREATE TABLE IF NOT EXISTS checkout_attempts (
   plan TEXT NOT NULL, expires INTEGER NOT NULL
 )`);
 
-const plans = {
-  plus: { label: "Plus", price: process.env.STRIPE_PRICE_PLUS, daily: 100 },
-  pro: { label: "Pro", price: process.env.STRIPE_PRICE_PRO, daily: 300 },
-};
-const secret = process.env.STRIPE_SECRET_KEY;
-const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
-const baseUrl = process.env.APP_BASE_URL;
-const enabled = !freeAccess && Boolean(secret && webhookSecret && baseUrl && Object.values(plans).some(plan => plan.price));
+const baseUrl = process.env.APP_BASE_URL || "http://localhost:3100";
+const subscriptionColumns=db.prepare("PRAGMA table_info(subscriptions)").all().map(x=>x.name);
+for(const [name,type] of [["period_start","INTEGER"],["period_end","INTEGER"],["cancel_at_period_end","INTEGER NOT NULL DEFAULT 0"]])
+  if(!subscriptionColumns.includes(name))db.exec(`ALTER TABLE subscriptions ADD COLUMN ${name} ${type}`);
 const latestSubscription = db.prepare("SELECT * FROM subscriptions WHERE user_id=? ORDER BY status IN ('active','trialing') DESC, event_time DESC LIMIT 1");
 const dayKey = () => new Date().toISOString().slice(0, 10);
 const inUse = (subscription) => subscription && ["active", "trialing"].includes(subscription.status);
@@ -40,82 +38,22 @@ export function recordUsage(req, usage, audioBytes = 0) {
 
 export const aiLimits = [
   requireUser,
-  limitRequests({ limit: freeAccess ? 120 : 18, windowMs: 60000, key: req => req.user.id }),
-  (req, res, next) => {
-    if (freeAccess) {
-      req.usageDay = dayKey();
-      db.prepare("INSERT INTO ai_usage(user_id,day,calls) VALUES(?,?,1) ON CONFLICT(user_id,day) DO UPDATE SET calls=calls+1").run(req.user.id,req.usageDay);
-      return next();
-    }
-    const subscription = latestSubscription.get(req.user.id);
-    const trial = inUse(subscription) ? null : startTrial(req.user);
-    if (trial?.state === "expired") {
-      return res.status(402).json({ error: "Votre essai de 10 minutes est terminé. Vos préparations et débriefs restent accessibles.", trial });
-    }
-    const daily = inUse(subscription) ? plans[subscription.plan]?.daily || 30 : trial?.active ? 120 : 30;
-    req.usageDay = dayKey();
-    const result = db.prepare(`INSERT INTO ai_usage (user_id,day,calls) VALUES (?,?,1)
-      ON CONFLICT(user_id,day) DO UPDATE SET calls=calls+1 WHERE calls < ?`).run(req.user.id, req.usageDay, daily);
-    if (!result.changes) {
-      return res.status(429).json({ error: "Votre limite quotidienne d’appels IA est atteinte." });
-    }
-    next();
-  },
+  limitRequests({limit:120,windowMs:60000,key:req=>req.user.id,scope:"ai"}),
+  (req,res,next) => {
+    const status=quotaStatus(req.user.id);
+    if(!status.local_beta && db.prepare("SELECT count(*) n FROM consents WHERE user_id=? AND version='2026-11-21' AND document IN ('cgu','confidentialite')").get(req.user.id).n!==2)
+      return res.status(403).json({error:"Acceptez les CGU et la confidentialité depuis Mon compte pour continuer."});
+    if(!status.local_beta&&!status.email_verified)return res.status(403).json({error:"Vérifiez votre adresse e-mail depuis Mon compte avant de démarrer."});
+    if(!status.allowances.some(x=>x.remaining_seconds>0 && x.cost_remaining>0 && x.tokens_remaining>0))
+      return res.status(402).json({error:"Votre crédit IA est épuisé ou expiré. Consultez vos offres dans Mon compte."});
+    req.usageDay=dayKey();
+    db.prepare("INSERT INTO ai_usage(user_id,day,calls) VALUES(?,?,1) ON CONFLICT(user_id,day) DO UPDATE SET calls=calls+1").run(req.user.id,req.usageDay);
+    meterContext.run(req,next);
+  }
 ];
 
-async function stripe(path, params, idempotencyKey) {
-  const headers = { Authorization: `Bearer ${secret}` };
-  if (idempotencyKey) headers["Idempotency-Key"] = idempotencyKey;
-  const response = await fetch(`https://api.stripe.com/v1/${path}`, {
-    method: params ? "POST" : "GET", headers,
-    body: params ? new URLSearchParams(params) : undefined,
-    signal: AbortSignal.timeout(8000),
-  });
-  if (!response.ok) throw new Error(`Stripe HTTP ${response.status}`);
-  return response.json();
-}
-
-function verifiedEvent(body, header) {
-  if (!Buffer.isBuffer(body) || typeof header !== "string") return null;
-  const elements = header.split(",");
-  const time = elements.find(item => item.startsWith("t="))?.slice(2);
-  if (!/^\d+$/.test(time || "") || Math.abs(Date.now() / 1000 - Number(time)) > 300) return null;
-  const signature = createHmac("sha256", webhookSecret).update(`${time}.`).update(body).digest("hex");
-  if (!elements.some(item => item.startsWith("v1=") && equalSecret(item.slice(3), signature))) return null;
-  try { return JSON.parse(body.toString("utf8")); } catch { return null; }
-}
-
-export function registerBillingWebhook(app) {
-  app.post("/api/billing/webhook", express.raw({ type: "application/json", limit: "256kb" }), async (req, res) => {
-    if (!enabled) return res.sendStatus(503);
-    const event = verifiedEvent(req.body, req.get("stripe-signature"));
-    if (!event) return res.sendStatus(400);
-    if (!["customer.subscription.created", "customer.subscription.updated", "customer.subscription.deleted"].includes(event.type)) {
-      return res.sendStatus(204);
-    }
-    const incoming = event.data?.object;
-    if (!/^sub_[a-zA-Z0-9]+$/.test(incoming?.id || "") || !Number.isSafeInteger(event.created)) return res.sendStatus(400);
-    try {
-      const subscription = await stripe(`subscriptions/${incoming.id}`);
-      const reference = subscription.metadata?.copilote_reference;
-      if (!reference) return res.sendStatus(204);
-      const account = db.prepare("SELECT id FROM users WHERE billing_reference=?").get(reference);
-      if (!account) return res.sendStatus(204);
-      const price = subscription.items?.data?.[0]?.price?.id;
-      const plan = Object.keys(plans).find(key => plans[key].price && plans[key].price === price) || "";
-      db.prepare(`INSERT INTO subscriptions VALUES (?,?,?,?,?,?)
-        ON CONFLICT(id) DO UPDATE SET plan=excluded.plan,status=excluded.status,event_time=excluded.event_time
-        WHERE subscriptions.user_id=excluded.user_id AND subscriptions.event_time <= excluded.event_time`).run(
-        incoming.id, account.id, subscription.customer, plan, plan ? subscription.status : "inactive", event.created,
-      );
-      res.sendStatus(204);
-    } catch {
-      res.sendStatus(502);
-    }
-  });
-}
-
 export function registerBilling(app) {
+  app.get("/api/account/usage",requireUser,(req,res)=>res.json(quotaStatus(req.user.id)));
   app.get("/api/account/export", requireUser, (req, res) => {
     const { id, trial_eligible, ...account } = req.user;
     const byUser = (table, fields) => db.prepare(`SELECT ${fields} FROM ${table} WHERE user_id=?`).all(id);
@@ -127,7 +65,10 @@ export function registerBilling(app) {
       onboarding: byUser("workspace_profiles", "purpose,discovery"),
       documents: byUser("documents", "id,name,content"),
       sessions: byUser("call_sessions","id,created,data,transcript").map(row=>({id:row.id,created:row.created,...JSON.parse(row.data),transcript:JSON.parse(row.transcript)})),
-      usage: byUser("ai_usage", "day,calls,input_tokens,output_tokens,audio_bytes"),
+      usage: byUser("usage","id,type,model,state,created_at,audio_seconds,billable_seconds,input_tokens,output_tokens,estimated_cost_usd"),
+      consents: byUser("consents","document,version,accepted_at"),
+      entitlements: byUser("entitlements","plan_id,starts,ends,active"),
+      subscriptions: byUser("subscriptions","plan,status,period_start,period_end,cancel_at_period_end"),
     });
   });
   app.delete("/api/account/me", requireUser, limitRequests({ limit: 5, windowMs: 900000, key: req => req.user.id }), (req, res) => {
@@ -146,32 +87,27 @@ export function registerBilling(app) {
     res.clearCookie("copilote_session", { httpOnly: true, sameSite: "strict", secure: secureRequest(req), path: "/" });
     res.status(204).end();
   });
-  app.get("/api/billing/plans", async (_req, res) => {
-    if (!enabled) return res.json({ enabled: false, free_access: freeAccess, plans: [] });
-    try {
-      const available = await Promise.all(Object.entries(plans).filter(([, plan]) => plan.price).map(async ([id, plan]) => {
-        const result = await stripe(`prices/${encodeURIComponent(plan.price)}`);
-        return { id, label: plan.label, daily: plan.daily, amount: result.unit_amount, currency: result.currency, interval: result.recurring?.interval, intervalCount: result.recurring?.interval_count, active: result.active };
-      }));
-      res.json({ enabled: true, plans: available.filter(plan => plan.active && plan.interval && Number.isInteger(plan.amount)) });
-    } catch {
-      res.status(502).json({ error: "Les offres sont temporairement indisponibles." });
-    }
-  });
+  app.get("/api/billing/plans", (_req,res)=>res.json({enabled:paymentsEnabled(),free_access:freeAccess,
+    test_mode:!process.env.STRIPE_SECRET_KEY||process.env.STRIPE_SECRET_KEY.startsWith("sk_test_"),
+    plans:catalog().map(p=>({id:p.id,label:p.label,mode:p.mode,amount:p.amount_cents,currency:"EUR",minutes:p.minutes,valid_days:p.valid_days,live_questions:p.live_questions,daily_audio_minutes:p.daily_audio_minutes,available:p.mode==="free"||(paymentsEnabled()&&Boolean(p.stripe_price_id))}))}));
   app.get("/api/billing/status", requireUser, (req, res) => {
     const subscription = latestSubscription.get(req.user.id);
-    res.json({ free_access: freeAccess, enabled, active: Boolean(inUse(subscription)), portal: Boolean(enabled && subscription?.customer), plan: subscription?.plan || "" });
+    res.json({free_access:freeAccess,enabled:paymentsEnabled(),active:Boolean(inUse(subscription)),portal:Boolean(paymentsEnabled()&&subscription?.customer),plan:subscription?.plan||"",usage:quotaStatus(req.user.id)});
   });
   const limitBilling = limitRequests({ limit: 5, windowMs: 60000, key: req => req.user.id });
   app.post("/api/billing/checkout", requireUser, limitBilling, async (req, res) => {
     const planId = req.body?.plan;
-    if (!enabled || typeof planId !== "string" || !Object.hasOwn(plans, planId) || !plans[planId].price) {
+    const plan=catalog().find(p=>p.id===planId && p.mode!=="free");
+    if (!paymentsEnabled() || !plan?.stripe_price_id) {
       return res.status(503).json({ error: "Cette offre n’est pas disponible." });
     }
     const subscription = latestSubscription.get(req.user.id);
-    if (subscription && !["canceled", "incomplete_expired"].includes(subscription.status)) {
+    if (plan.mode==="subscription" && subscription && !["canceled", "incomplete_expired"].includes(subscription.status)) {
       return res.status(409).json({ error: "Gérez votre abonnement depuis votre espace." });
     }
+    if(!req.user.email_verified_at)return res.status(403).json({error:"Vérifiez votre adresse e-mail avant de payer."});
+    if(req.body?.accept_cgv!==true)return res.status(400).json({error:"Acceptez les CGV avant de continuer vers Stripe."});
+    db.prepare("INSERT OR IGNORE INTO consents VALUES(?,?,?,?)").run(req.user.id,"cgv","2026-11-21",Date.now());
     const now = Math.floor(Date.now() / 1000);
     db.prepare("DELETE FROM checkout_attempts WHERE user_id=? AND expires<=?").run(req.user.id, now);
     db.prepare("INSERT INTO checkout_attempts VALUES (?,?,?) ON CONFLICT(user_id) DO NOTHING").run(req.user.id, planId, now + 35 * 60);
@@ -181,12 +117,18 @@ export function registerBilling(app) {
     }
     try {
       const { billing_reference } = db.prepare("SELECT billing_reference FROM users WHERE id=?").get(req.user.id);
+      const price=await stripe("prices/"+encodeURIComponent(plan.stripe_price_id));
+      if(!price.active || price.currency!=="eur" || price.unit_amount!==plan.amount_cents || price.tax_behavior!=="inclusive" ||
+        (plan.mode==="subscription" && (price.recurring?.interval!=="month"||price.recurring?.interval_count!==1)) || (plan.mode==="payment" && price.recurring))
+        return res.status(503).json({error:"Ce tarif nécessite une vérification avant paiement."});
       const session = await stripe("checkout/sessions", {
-        mode: "subscription", "line_items[0][price]": plans[planId].price, "line_items[0][quantity]": "1",
-        "subscription_data[metadata][copilote_reference]": billing_reference,
+        mode: plan.mode, "line_items[0][price]": plan.stripe_price_id, "line_items[0][quantity]": "1",
+        "metadata[copilote_reference]":billing_reference,"metadata[plan_id]":plan.id,
+        ...(plan.mode==="subscription"?{"subscription_data[metadata][copilote_reference]":billing_reference}:{}),
+        ...(process.env.STRIPE_TAX_ENABLED==="true"?{"automatic_tax[enabled]":"true"}:{}),
         expires_at: String(attempt.expires),
-        success_url: new URL("/compte.html?facturation=confirmee", baseUrl).href,
-        cancel_url: new URL("/tarifs.html", baseUrl).href,
+        success_url: new URL("/paiement-succes.html", baseUrl).href,
+        cancel_url: new URL("/paiement-annule.html", baseUrl).href,
         ...(subscription?.customer ? { customer: subscription.customer } : { customer_email: req.user.email }),
       }, `copilote-checkout-${billing_reference}-${attempt.expires}`);
       res.json({ url: session.url });
@@ -196,10 +138,11 @@ export function registerBilling(app) {
   });
   app.post("/api/billing/portal", requireUser, limitBilling, async (req, res) => {
     const subscription = latestSubscription.get(req.user.id);
-    if (!enabled || !subscription?.customer) return res.status(404).json({ error: "Aucun abonnement disponible." });
+    if (!paymentsEnabled() || !subscription?.customer) return res.status(404).json({ error: "Aucun abonnement disponible." });
     try {
       const portal = await stripe("billing_portal/sessions", {
         customer: subscription.customer, return_url: new URL("/compte.html", baseUrl).href,
+        ...(db.prepare("SELECT value FROM payment_settings WHERE name='portal_configuration'").get()?.value ? {configuration:db.prepare("SELECT value FROM payment_settings WHERE name='portal_configuration'").get().value}:{}),
       });
       res.json({ url: portal.url });
     } catch {

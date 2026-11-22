@@ -1,4 +1,5 @@
-import { freeAccess } from "./access.js";
+import { quotaStatus, localBeta } from "./quotas.js";
+import { acceptDocuments, consumeInvitation, sendVerification } from "./registration.js";
 import { db } from "./storage.js";
 export { db };
 import { randomBytes, randomUUID, scryptSync, timingSafeEqual, createHash } from "node:crypto";
@@ -26,7 +27,8 @@ db.exec(`CREATE TABLE IF NOT EXISTS extension_tokens (
 )`);
 const digest = value => createHash("sha256").update(value).digest("hex");
 const cookieToken = (req) => req.get("cookie")?.match(/(?:^|;\s*)copilote_session=([a-f0-9]{64})(?:;|$)/)?.[1];
-const publicFields = "users.id, users.email, users.first_name, users.last_name, users.goals, users.salary, users.notes, users.trial_started, users.trial_eligible";
+if (!columns.includes("email_verified_at")) db.exec("ALTER TABLE users ADD COLUMN email_verified_at INTEGER");
+const publicFields = "users.id, users.email, users.first_name, users.last_name, users.goals, users.salary, users.notes, users.trial_started, users.trial_eligible, users.email_verified_at";
 const sessionUser = db.prepare(`SELECT ${publicFields} FROM sessions JOIN users ON users.id=sessions.user_id WHERE token_hash=? AND expires>?`);
 const extensionUser = db.prepare(`SELECT ${publicFields} FROM extension_tokens JOIN users ON users.id=extension_tokens.user_id WHERE token_hash=? AND expires>?`);
 function current(req) {
@@ -39,27 +41,13 @@ function current(req) {
 }
 
 export function trialStatus(user) {
-  if (freeAccess) return {active:true,state:"free",remaining_seconds:null,total_seconds:null};
-  const total = 600;
-  if (user.trial_started == null) {
-    return { active: false, state: user.trial_eligible ? "ready" : "legacy", remaining_seconds: total, total_seconds: total };
-  }
-  const expiresAt = user.trial_started + total * 1000;
-  const remaining = Math.min(total, Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000)));
-  return {
-    active: remaining > 0, state: remaining > 0 ? "active" : "expired",
-    remaining_seconds: remaining, total_seconds: total, expires_at: expiresAt,
-  };
+  if(localBeta)return {active:true,state:"free",remaining_seconds:null,total_seconds:null};
+  const status=quotaStatus(user.id);
+  return {active:status.remaining_seconds>0,state:!status.email_verified?"unverified":status.remaining_seconds>0?"active":"expired",
+    remaining_seconds:status.remaining_seconds,total_seconds:status.allowances.reduce((sum,e)=>sum+e.minutes*60,0),
+    expires_at:status.allowances.length?Math.min(...status.allowances.map(e=>e.ends)):null};
 }
-
-export function startTrial(user) {
-  if (freeAccess) return trialStatus(user);
-  if (user.trial_eligible && user.trial_started == null) {
-    db.prepare("UPDATE users SET trial_started=? WHERE id=? AND trial_started IS NULL").run(Date.now(), user.id);
-    user.trial_started = db.prepare("SELECT trial_started FROM users WHERE id=?").get(user.id).trial_started;
-  }
-  return trialStatus(user);
-}
+export function startTrial(user) { return trialStatus(user); }
 
 export function requireUser(req, res, next) {
   req.user = current(req);
@@ -76,7 +64,8 @@ export function session(req, res, id) {
 const accountLimit = (limit) => limitRequests({ limit, windowMs: 15 * 60 * 1000 });
 
 export function registerAccounts(app, upload) {
-  app.post("/api/account/register", accountLimit(8), (req, res) => {
+  app.post("/api/account/register", accountLimit(8), async (req, res) => {
+    if (![true,"on"].includes(req.body?.accept_terms)) return res.status(400).json({error:"Acceptez les CGU et la politique de confidentialité."});
     const email = String(req.body?.email || "").trim().toLowerCase();
     const password = String(req.body?.password || "");
     const firstName = String(req.body?.first_name || "").trim();
@@ -87,14 +76,21 @@ export function registerAccounts(app, upload) {
     try {
       const salt = randomBytes(16).toString("hex");
       const hash = scryptSync(password, salt, 64).toString("hex");
+      db.exec("BEGIN IMMEDIATE");
+      consumeInvitation(req.body?.invitation_code);
       const row = db.prepare("INSERT INTO users(email,salt,password_hash,first_name,last_name,trial_eligible,billing_reference) VALUES(?,?,?,?,?,1,?)").run(email, salt, hash, firstName, lastName, randomUUID());
-      session(req, res, row.lastInsertRowid); res.status(201).json({ok:true});
-    } catch { res.status(400).json({error:"Impossible de créer le compte. Vérifiez vos informations."}); }
+      acceptDocuments(row.lastInsertRowid);
+      db.exec("COMMIT");
+      session(req, res, row.lastInsertRowid);
+      const verification_sent=await sendVerification(row.lastInsertRowid);
+      res.status(201).json({ok:true,verification_sent});
+    } catch(error) { if(db.isTransaction)db.exec("ROLLBACK");res.status(error.status||400).json({error:error.status===403?error.message:"Impossible de créer le compte. Vérifiez vos informations."}); }
   });
   app.post("/api/account/forgot-password", accountLimit(5), async (req,res) => {
     const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, SMTP_FROM, APP_BASE_URL } = process.env;
     if (!SMTP_HOST || !SMTP_PORT || !SMTP_USER || !SMTP_PASSWORD || !SMTP_FROM || !APP_BASE_URL) return res.status(503).json({error:"L’envoi d’emails n’est pas encore configuré sur ce prototype."});
     const now = Date.now();
+    if (![true,"on"].includes(req.body?.accept_terms)) return res.status(400).json({error:"Acceptez les CGU et la politique de confidentialité."});
     const email = String(req.body?.email || "").trim().toLowerCase();
     const user = db.prepare("SELECT id FROM users WHERE email=?").get(email);
     if (user) {

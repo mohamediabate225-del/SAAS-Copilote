@@ -36,10 +36,10 @@ export function apiSecurity(req, res, next) {
   res.set("Cache-Control", "no-store");
   const origin = req.get("origin");
   if (origin?.startsWith("chrome-extension://") && !isExtension(origin)) return res.status(403).json({error:"Extension non autorisée."});
-  if (isExtension(origin)) {
+  if (isExtension(origin) || (!origin && /^Bearer /.test(req.get("authorization")||""))) {
     // Extension requests are limited to scoped bearer tokens. Cookies never identify an extension user.
     res.vary("Origin");
-    res.set("Access-Control-Allow-Origin", origin);
+    if(origin)res.set("Access-Control-Allow-Origin", origin);
     res.set("Access-Control-Allow-Headers", "Authorization, Content-Type");
     res.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
     if (req.method === "OPTIONS") return res.sendStatus(204);

@@ -1,5 +1,10 @@
+import { monitorRequests, registerMonitoring } from "./monitoring.js";
 import "dotenv/config";
 import helmet from "helmet";
+import { meteredClient, reserve, settle } from "./quotas.js";
+import { audioDuration } from "./audio-duration.js";
+import { flushPaymentEmails } from "./payments.js";
+import { registerVerification } from "./registration.js";
 import { db, cleanupExpired } from "./storage.js";
 import { focusQuestion } from "./question-focus.js";
 import { resolve } from "node:path";
@@ -21,7 +26,6 @@ if (!process.env.OPENAI_API_KEY) {
 
 const PORT = Number(process.env.PORT || 3100);
 const TRANSCRIBE_MODEL = process.env.TRANSCRIBE_MODEL || "gpt-4o-transcribe";
-const ANSWER_MODEL = process.env.ANSWER_MODEL || "gpt-4.1-mini";
 
 function aiFailure(error, fallback) {
   return error?.status === 401
@@ -29,17 +33,19 @@ function aiFailure(error, fallback) {
     : fallback;
 }
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, timeout: 25000, maxRetries: 1 });
+const openai = meteredClient(new OpenAI({ apiKey: process.env.OPENAI_API_KEY, timeout: 25000, maxRetries: 0 }));
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024, files: 1, fields: 8 } });
 
 const app = express();
+app.use(monitorRequests);
 app.disable("x-powered-by");
 app.use(helmet({contentSecurityPolicy:false,strictTransportSecurity:process.env.NODE_ENV === "production" ? {maxAge:31536000} : false}));
-if (process.env.TRUST_PROXY?.trim()) app.set("trust proxy", process.env.TRUST_PROXY.trim().split(/\s*,\s*/));
+if (process.env.TRUST_PROXY?.trim()) { const proxy=process.env.TRUST_PROXY.trim();app.set("trust proxy", /^\d+$/.test(proxy)?Number(proxy):proxy.split(/\s*,\s*/)); }
 const production = process.env.NODE_ENV === "production";
 if (production && (!process.env.APP_BASE_URL?.startsWith("https://") || !process.env.COPILOTE_DB_PATH)) {
   throw new Error("En production, APP_BASE_URL (HTTPS) et COPILOTE_DB_PATH (volume persistant) sont requis.");
 }
+if(production && (!process.env.TRIAL_IDENTITY_SECRET || process.env.TRIAL_IDENTITY_SECRET.length<32))throw new Error("TRIAL_IDENTITY_SECRET aléatoire et stable (32 caractères minimum) requis en production.");
 const preview = process.env.PREVIEW_TOKEN || process.env.PREVIEW_PASSWORD;
 if (preview && preview.length < 32) throw new Error("Remplacez l’ancien secret de prévisualisation par un PREVIEW_TOKEN aléatoire d’au moins 32 caractères.");
 app.use((_req, res, next) => {
@@ -52,6 +58,14 @@ app.use((_req, res, next) => {
   if (production) res.set("Strict-Transport-Security", "max-age=31536000");
   next();
 });
+registerBillingWebhook(app);
+app.use("/api", apiSecurity);
+app.use(express.json({ limit: "1mb" }));
+app.get("/api/health", (_req, res) => {
+  try { db.prepare("SELECT 1").get(); res.json({service:"copilote-entretien",status:"ok",database:"ok",ai_configured:Boolean(process.env.OPENAI_API_KEY),uptime_seconds:Math.floor(process.uptime())}); }
+  catch { res.status(503).json({service:"copilote-entretien",status:"unavailable"}); }
+});
+registerMonitoring(app);
 mountOAuthCallbacks(app);
 if (preview) app.use(createPreviewGate(preview));
 mountOAuthStart(app);
@@ -60,13 +74,6 @@ for (const family of ["inter","inter-tight","bricolage-grotesque"]) {
   app.get("/fonts/"+family+".woff2",(_req,res)=>res.sendFile(resolve(dir,"files",family+"-latin-wght-normal.woff2")));
   app.get("/fonts/"+family+"-license.txt",(_req,res)=>res.type("text").sendFile(resolve(dir,"LICENSE")));
 }
-registerBillingWebhook(app);
-app.use("/api", apiSecurity);
-app.use(express.json({ limit: "1mb" }));
-app.get("/api/health", (_req, res) => {
-  try { db.prepare("SELECT 1").get(); res.json({service:"copilote-entretien",status:"ok",database:"ok",ai_configured:Boolean(process.env.OPENAI_API_KEY),uptime_seconds:Math.floor(process.uptime())}); }
-  catch { res.status(503).json({service:"copilote-entretien",status:"unavailable"}); }
-});
 const indexable = production && !preview;
 app.get("/api/public-config", (_req, res) => res.json({ offline_demo: !preview, server_password: Boolean(process.env.APP_PASSWORD) }));
 app.get("/robots.txt", (_req, res) => res.type("text").send(indexable
@@ -91,6 +98,7 @@ app.use("/api", (req, res, next) => {
   next();
 });
 registerAccounts(app, upload);
+registerVerification(app, requireUser);
 registerPractice(app);
 registerBilling(app);
 registerWorkspace(app, upload, openai);
@@ -104,6 +112,7 @@ app.post("/api/transcribe", requireUser, upload.single("audio"), (req, res, next
   next();
 }, aiLimits, async (req, res) => {
   try {
+    req.audioSeconds=await audioDuration(req.file.buffer);
     const type = req.file.mimetype.split(";")[0];
     const ext = { "audio/mpeg": "mp3", "audio/x-m4a": "m4a" }[type] || type.split("/")[1];
     const file = await toFile(req.file.buffer, `question.${ext}`, { type });
@@ -117,8 +126,9 @@ app.post("/api/transcribe", requireUser, upload.single("audio"), (req, res, next
     });
 
     recordUsage(req, null, req.file.size);
-    res.json({ text: (result.text || "").trim() });
+    res.json({ text: (result.text || "").trim(), audio_seconds:req.audioSeconds, speech_receipt:req.lastUsageId });
   } catch (err) {
+    if(err.quota||err.clientSafe)throw err;
     console.error("transcribe:", err?.status || err?.name);
     res.status(500).json({ error: aiFailure(err, "Échec de la transcription. Réessaie.") });
   }
@@ -131,7 +141,7 @@ app.post("/api/focus-question", aiLimits, async (req,res) => {
     const result=await focusQuestion(openai,{transcript,previousQuestion:clean(req.body?.previousQuestion,2000)},process.env.QUESTION_MODEL||"gpt-4.1-mini");
     recordUsage(req,result.usage);
     res.json({question:result.question,needs_clarification:result.needs_clarification});
-  }catch(error){res.status(502).json({error:aiFailure(error,"Question incertaine. Saisissez ou corrigez la question avant de répondre.")});}
+  }catch(error){if(error.quota)throw error;res.status(502).json({error:aiFailure(error,"Question incertaine. Saisissez ou corrigez la question avant de répondre.")});}
 });
 
 // 2) Question -> réponse, streamée mot à mot
@@ -152,12 +162,17 @@ app.post("/api/answer", aiLimits, async (req, res) => {
     de: {audio:"Ja, ich höre Sie. Können Sie mich auch hören?",name:"Ich heiße",greeting:"Mir geht es gut, danke. Und Ihnen?"}
   };
   const simple = shortReplies[context.language] || shortReplies.fr;
+  const simpleAnswer = text => {
+    const reservation=reserve(req,"local",{model:"local"});
+    settle(reservation,{usage:{prompt_tokens:0,completion_tokens:0}});
+    return res.type("text/plain; charset=utf-8").send(text);
+  };
   if (/^(?:est[- ]ce que )?(?:tu m['’]entends|vous m['’]entendez|tu entends|vous entendez)|^can you hear me$/i.test(lastQuestion) && lastQuestion.length<90)
-    return res.type("text/plain; charset=utf-8").send(simple.audio);
+    return simpleAnswer(simple.audio);
   if (/^(?:comment (?:tu t['’]appelles|vous (?:vous appelez|appelez[- ]vous))|tu t['’]appelles comment|quel est (?:ton|votre) (?:nom|prénom))$/i.test(lastQuestion))
-    return res.type("text/plain; charset=utf-8").send(simple.name+" "+([req.user.first_name,req.user.last_name].filter(Boolean).join(" ")||"[votre nom]")+".");
+    return simpleAnswer(simple.name+" "+([req.user.first_name,req.user.last_name].filter(Boolean).join(" ")||"[votre nom]")+".");
   if (/^(?:tu vas bien|comment (?:allez[- ]vous|vas[- ]tu))$/i.test(lastQuestion))
-    return res.type("text/plain; charset=utf-8").send(simple.greeting);
+    return simpleAnswer(simple.greeting);
   let webQuestion = saved?.web && req.body?.web === true ? question.slice(0,2000) : '';
   if (saved?.web && req.body?.web === 'auto') {
     try {
@@ -167,7 +182,7 @@ app.post("/api/answer", aiLimits, async (req, res) => {
       });
       recordUsage(req,routing.usage);
       webQuestion=clean(JSON.parse(routing.choices[0].message.content).query,250);
-    } catch { /* Keep answering from session context when routing fails. */ }
+    } catch (error) { if(error.quota)throw error; /* Keep answering from session context when routing fails. */ }
   }
   if (webQuestion) {
     try {
@@ -175,7 +190,7 @@ app.post("/api/answer", aiLimits, async (req, res) => {
       recordUsage(req,result.usage);
       const sources = (result.output||[]).flatMap(x=>x.content||[]).flatMap(x=>x.annotations||[]).filter(x=>x.type==='url_citation').map(x=>`${x.title}: ${x.url}`);
       return res.type('text/plain; charset=utf-8').send(result.output_text+(sources.length?'\n\nSources\n'+[...new Set(sources)].join('\n'):''));
-    } catch { return res.status(502).json({error:'Recherche web indisponible. Désactivez la recherche pour répondre avec les connaissances générales.'}); }
+    } catch (error) { if(error.quota)throw error;return res.status(502).json({error:'Recherche web indisponible. Désactivez la recherche pour répondre avec les connaissances générales.'}); }
   }
   const profile = typeof context?.profile === "string" ? context.profile : "";
 
@@ -192,7 +207,7 @@ app.post("/api/answer", aiLimits, async (req, res) => {
   res.setHeader("X-Accel-Buffering", "no");
   try {
     const stream = await openai.chat.completions.create({
-      model: profile ? (process.env.GROUNDED_ANSWER_MODEL || "gpt-4.1") : selectedModel(context.model),
+      model: context.model ? selectedModel(context.model) : profile ? (process.env.GROUNDED_ANSWER_MODEL || "gpt-4.1") : selectedModel(context.model),
       temperature: 0.2,
       store: false,
       stream: true,
@@ -213,6 +228,7 @@ app.post("/api/answer", aiLimits, async (req, res) => {
     }
     res.end();
   } catch (err) {
+    if(err.quota||err.clientSafe)throw err;
     console.error("answer:", err?.status || err?.name);
     if (res.headersSent) return res.destroy();
     res.status(502).json({ error: aiFailure(err, "Échec de la génération. Réessaie.") });
@@ -252,6 +268,7 @@ app.post("/api/training/question", aiLimits, async (req, res) => {
     recordUsage(req, completion.usage);
     res.json({ question });
   } catch (err) {
+    if(err.quota||err.clientSafe)throw err;
     console.error("training question:", err?.status || err?.name);
     res.status(500).json({ error: aiFailure(err, "Impossible de formuler la question du recruteur.") });
   }
@@ -285,6 +302,7 @@ app.post("/api/training/feedback", aiLimits, async (req, res) => {
     const coach = cleanCoach(JSON.parse(completion.choices[0]?.message?.content || "{}"));
     res.json({ coach, delivery: deliveryMetrics(req.body?.delivery, answer) });
   } catch (err) {
+    if(err.quota||err.clientSafe)throw err;
     console.error("training feedback:", err?.status || err?.name);
     res.status(502).json({ error: aiFailure(err, "Le débriefing est indisponible. Votre réponse peut être analysée de nouveau.") });
   }
@@ -292,6 +310,7 @@ app.post("/api/training/feedback", aiLimits, async (req, res) => {
 
 app.use((error, _req, res, next) => {
   if (res.headersSent) return next(error);
+  if(error.quota||error.clientSafe)return res.status(error.status).type("application/json").json({error:error.message,code:"quota"});
   if (error.code === "LIMIT_FILE_SIZE" || error.status === 413) {
     return res.status(413).json({ error: "Fichier ou formulaire trop volumineux (8 Mo maximum par fichier)." });
   }
@@ -303,7 +322,14 @@ app.use((error, _req, res, next) => {
 });
 
 cleanupExpired();
+const mailTimer=setInterval(()=>flushPaymentEmails().catch(()=>{}),60000);mailTimer.unref();
 const cleanupTimer = setInterval(cleanupExpired, 15 * 60 * 1000);
 cleanupTimer.unref();
 const HOST = process.env.HOST || (production ? "0.0.0.0" : "127.0.0.1");
 const server = app.listen(PORT, HOST, () => console.log(`✅ Copilote d'entretien prêt : http://localhost:${server.address().port}`));
+function shutdown() {
+  clearInterval(cleanupTimer);clearInterval(mailTimer);
+  server.close(()=>{try{db.close();}finally{process.exit(0);}});
+  setTimeout(()=>process.exit(1),15000).unref();
+}
+process.once("SIGTERM",shutdown);process.once("SIGINT",shutdown);

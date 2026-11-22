@@ -35,7 +35,7 @@ export const models = () => [
   ...new Set(
     (
       process.env.AI_MODELS ||
-      [process.env.ANSWER_MODEL || "gpt-4.1-mini", "gpt-4.1-mini"].join(",")
+      [process.env.ANSWER_MODEL || "gpt-4.1", "gpt-4.1", "gpt-4.1-mini"].join(",")
     )
       .split(",")
       .map((x) => x.trim())
@@ -72,23 +72,8 @@ const safeUrl = (value) => {
 };
 db.exec(`CREATE TABLE IF NOT EXISTS session_usage(user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, used INTEGER NOT NULL DEFAULT 0);
 INSERT OR IGNORE INTO session_usage SELECT user_id, count(*) FROM call_sessions GROUP BY user_id;`);
-function remainingSessions(id) {
-  if (freeAccess) return null;
-  if (
-    db
-      .prepare(
-        "SELECT 1 FROM subscriptions WHERE user_id=? AND status IN ('active','trialing')",
-      )
-      .get(id)
-  )
-    return null;
-  return Math.max(
-    0,
-    10 -
-      (db.prepare("SELECT used FROM session_usage WHERE user_id=?").get(id)
-        ?.used || 0),
-  );
-}
+function remainingSessions(id) { return null; }
+
 export function registerWorkspace(app, upload, openai) {
   app.get("/api/workspace/config", requireUser, (req, res) =>
     res.json({ free_access: freeAccess, models: models(), remaining: remainingSessions(req.user.id) }),
@@ -339,6 +324,7 @@ export function registerWorkspace(app, upload, openai) {
       }
       db.exec("COMMIT");
     } catch (error) {
+      if(error.quota)throw error;
       db.exec("ROLLBACK");
       throw error;
     }
@@ -421,7 +407,8 @@ export function registerWorkspace(app, upload, openai) {
               "Offre inaccessible ou non confirmée. Collez sa description.",
           });
       res.json({ text: r.output_text, url });
-    } catch {
+    } catch (error) {
+      if(error.quota)throw error;
       res
         .status(502)
         .json({
@@ -452,7 +439,8 @@ export function registerWorkspace(app, upload, openai) {
       });
       recordUsage(req, r.usage);
       res.json({ text: r.choices[0]?.message?.content || "" });
-    } catch {
+    } catch (error) {
+      if(error.quota)throw error;
       res
         .status(502)
         .json({ error: "Réécriture indisponible. Votre texte est conservé." });
@@ -490,7 +478,8 @@ export function registerWorkspace(app, upload, openai) {
         const data = r.data?.[0]?.b64_json;
         if (!data) throw new Error();
         res.json({ image: "data:image/png;base64," + data });
-      } catch {
+      } catch (error) {
+      if(error.quota)throw error;
         res
           .status(502)
           .json({
