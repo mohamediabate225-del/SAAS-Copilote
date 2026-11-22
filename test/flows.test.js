@@ -329,6 +329,59 @@ test("bibliothèque privée, contexte de session, transcription et quota",async(
   assert.equal((await request(path,{method:"POST",cookie:owner,body})).status,201);
 });
 
+test("tarifs : choix accessible, données synchronisées, consentement, erreurs et paiement simulé", {skip:!process.env.COPILOTE_PLAYWRIGHT,timeout:60000},async()=>{
+  const require=createRequire(join(process.env.COPILOTE_PLAYWRIGHT,'package.json'));
+  const {chromium}=require('playwright');
+  const browser=await chromium.launch({headless:true,channel:'msedge'});
+  try{
+    const page=await browser.newPage({viewport:{width:1440,height:1000},reducedMotion:'reduce'});
+    const errors=[];page.on('pageerror',error=>errors.push(error.message));
+    await page.goto(base+'/tarifs.html');
+    await page.locator('#plans input[value=essentiel]:checked').waitFor();
+    assert.equal(await page.getByRole('radio').count(),4);
+    assert.equal(await page.locator('#checkout').isDisabled(),true);
+    await page.locator('#plans input[value=sprint]').check();
+    assert.match(await page.locator('#selection-detail').textContent(),/Paiement unique/);
+    assert.equal(await page.locator('#preview-minutes').textContent(),'90');
+    await page.reload();await page.locator('#plans input[value=sprint]:checked').waitFor();
+    await page.locator('#plans input[value=sprint]').focus();await page.keyboard.press('ArrowDown');
+    assert.equal(await page.locator('#plans input[value=essentiel]').isChecked(),true);
+    await page.locator('#plans input[value=free]').check();
+    assert.equal(await page.locator('#start-free').isVisible(),true);
+    assert.equal(await page.locator('#checkout').isVisible(),false);
+    assert.match(await page.locator('#free-terms').textContent(),/15 minutes et 5 questions/);
+    for(const width of [375,768,1024,1440]){
+      await page.setViewportSize({width,height:820});
+      assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+    }
+    // A mock public catalogue verifies that neither prices nor included minutes are duplicated in the UI.
+    const result=await request('/api/billing/plans'),catalog=await result.json();
+    catalog.enabled=true;catalog.test_mode=true;
+    for(const plan of catalog.plans)plan.available=true;
+    const pro=catalog.plans.find(p=>p.id==='pro');pro.amount=3990;pro.minutes=450;
+    await page.route('**/api/billing/plans',route=>route.fulfill({json:catalog}));
+    await page.goto(base+'/tarifs.html?offre=pro');
+    await page.locator('#plans input[value=pro]:checked').waitFor();
+    assert.equal(await page.locator('#preview-minutes').textContent(),'450');
+    assert.match(await page.locator('#checkout').textContent(),/39,9/);
+    let calls=0;
+    await page.route('**/api/billing/checkout',route=>{calls++;assert.deepEqual(route.request().postDataJSON(),{plan:'pro',accept_cgv:true});return route.fulfill({status:503,json:{error:'Paiement indisponible pour ce test.'}});});
+    await page.locator('#checkout').click();
+    assert.equal(calls,0);assert.equal(await page.locator('#accept-cgv').evaluate(el=>el===document.activeElement),true);
+    await page.locator('#accept-cgv').check();await page.locator('#checkout').click();
+    await page.getByText('Paiement indisponible pour ce test.',{exact:true}).waitFor();
+    assert.equal(calls,1);assert.equal(await page.locator('#checkout').isEnabled(),true);
+    await page.unroute('**/api/billing/checkout');
+    await page.route('**/api/billing/checkout',route=>route.fulfill({json:{url:base+'/paiement-succes.html'}}));
+    await page.locator('#checkout').click();await page.waitForURL('**/paiement-succes.html');
+    await page.unroute('**/api/billing/plans');
+    let failure=true;await page.route('**/api/billing/plans',route=>route.fulfill(failure?{status:503,json:{error:'Tarifs indisponibles.'}}:{json:catalog}));
+    await page.goto(base+'/tarifs.html');await page.getByRole('button',{name:'Réessayer',exact:true}).waitFor();
+    failure=false;await page.getByRole('button',{name:'Réessayer',exact:true}).click();await page.locator('#plans input[value=essentiel]:checked').waitFor();
+    assert.deepEqual(errors,[]);
+  }finally{await browser.close();}
+});
+
 test("WebKit mobile et Edge exécutent le parcours candidat", { skip: !process.env.COPILOTE_PLAYWRIGHT, timeout: 180000 }, async () => {
   const require = createRequire(join(process.env.COPILOTE_PLAYWRIGHT, "package.json"));
   const { chromium, webkit } = require("playwright");

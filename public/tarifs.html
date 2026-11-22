@@ -1,1 +1,81 @@
-<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Préparez votre prochain entretien · COPILOTE.IA</title><link rel="stylesheet" href="/ui.css"></head><body class="app-page"><header class="app-header"><a class="app-brand" href="/"><span aria-hidden="true">c</span>Copilote Entretien</a><nav aria-label="Navigation principale"><a href="/dashboard.html">Tableau de bord</a><a href="/compte.html">Mon compte</a></nav></header><main class="app-wrap legal-copy"><h1>Préparez votre prochain entretien</h1><p class="page-lead">Simulations personnalisées, débrief du coach et aide à la réponse pour les usages autorisés.</p><p id="billing-status" class="notice" role="status" tabindex="-1"></p><div class="auth-grid" id="plans"></div><section class="surface"><h2>Un décompte transparent</h2><p>Une minute = une minute d’audio transcrite. Une réponse écrite analysée en entraînement consomme une minute. Plafond : 30 minutes d’audio par jour, heure de Paris. Les minutes inutilisées ne sont pas reportées.</p><p>Le Pass est un paiement unique. Les abonnements sont mensuels, résiliables depuis Mon compte. Aucun abonnement annuel au lancement.</p><label class="check-line"><input type="checkbox" id="accept-cgv"><span>J’accepte les <a href="/cgv.html">conditions générales de vente</a> avant de continuer vers le paiement.</span></label><p>Relisez toujours les suggestions. L’aide en direct exige l’accord des participants et le respect des règles du recruteur.</p></section></main><script type="module" src="/tarifs.js"></script><footer class="legal-footer"><nav aria-label="Informations légales"><a href="/cgu.html">CGU</a><a href="/cgv.html">CGV</a><a href="/confidentialite.html">Confidentialité</a><a href="/mentions-legales.html">Mentions légales</a><a href="mailto:mdiabate04@icloud.com?subject=Retour%20sur%20la%20b%C3%AAta">Donner mon avis</a></nav></footer><script defer src="/analytics.js"></script></body></html>
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Préparez vos entretiens à votre rythme. Essai gratuit, Pass Sprint et abonnements mensuels : comparez les minutes, les prix et les conditions de COPILOTE.IA.">
+  <title>Tarifs et offres · COPILOTE.IA</title>
+  <link rel="stylesheet" href="/ui.css">
+  <link rel="stylesheet" href="/tarifs.css">
+</head>
+<body class="app-page pricing-page">
+  <a class="pricing-skip" href="#offres">Aller aux offres</a>
+  <header class="app-header">
+    <a class="app-brand" href="/"><span aria-hidden="true">c</span>Copilote Entretien</a>
+    <nav aria-label="Navigation principale"><a href="/dashboard.html">Tableau de bord</a><a href="/compte.html">Mon compte <span aria-hidden="true">↗</span></a></nav>
+  </header>
+  <main class="app-wrap pricing-wrap" id="offres">
+    <div class="pricing-intro">
+      <p class="pricing-eyebrow"><span aria-hidden="true"></span> À CHAQUE OBJECTIF, SON RYTHME</p>
+      <h1>Votre prochain entretien.<br><em>Votre longueur d’avance.</em></h1>
+      <p class="pricing-lead">Un entretien en vue ou plusieurs opportunités à préparer ?<br class="desktop-break"> Choisissez votre offre. Entraînez-vous avec votre CV. Arrivez prêt.</p>
+    </div>
+    <div class="pricing-layout">
+      <section class="pricing-picker" aria-labelledby="choice-title">
+        <div class="pricing-section-title"><h2 id="choice-title">Choisissez votre rythme</h2><span>Prix TTC · EUR</span></div>
+        <p id="billing-status" class="pricing-status" role="status" aria-live="polite" tabindex="-1">Chargement des offres…</p>
+        <button class="text-action" id="retry-plans" type="button" hidden>Réessayer</button>
+        <fieldset id="plans" class="pricing-options" aria-busy="true"><legend class="pricing-sr-only">Votre offre</legend></fieldset>
+        <noscript><p>Activez JavaScript pour consulter les offres à jour. Vous pouvez aussi <a href="/connexion.html">créer votre compte</a>.</p></noscript>
+        <div id="selected-offer" hidden>
+          <div class="pricing-selection" aria-live="polite" aria-atomic="true"><strong id="selection-title"></strong><p id="selection-detail"></p></div>
+          <div class="pricing-checkout">
+            <label class="check-line" id="terms-row"><input type="checkbox" id="accept-cgv" aria-describedby="checkout-error"><span>J’accepte les <a href="/cgv.html" target="_blank" rel="noopener">conditions de vente<span class="pricing-sr-only"> (nouvel onglet)</span></a>.</span></label>
+            <p id="checkout-error" class="pricing-error" role="alert"></p>
+            <a id="start-free" class="action pricing-cta" href="/connexion.html#inscription" hidden>Essayer gratuitement <span aria-hidden="true">→</span></a>
+            <button id="checkout" class="action pricing-cta" type="button" disabled>Les paiements ouvrent bientôt</button>
+            <p id="payment-note" class="pricing-payment-note"></p>
+          </div>
+        </div>
+        <p class="pricing-help">Vous avez déjà un compte ? <a href="/compte.html">Retrouvez votre accès et vos minutes.</a></p>
+      </section>
+      <aside class="pricing-preview" aria-label="Votre parcours de préparation">
+        <div class="pricing-preview-heading"><span class="pricing-eyebrow">DU CV À LA CONFIANCE</span><span class="pricing-preview-label">Aperçu du parcours</span></div>
+        <div class="pricing-scene" aria-hidden="true">
+          <div class="pricing-document pricing-document-back"><span class="document-type">VOTRE OBJECTIF</span><strong>Le poste qui<br>vous correspond.</strong><i></i><i></i><i></i><span class="document-tag">Offre d’emploi</span></div>
+          <div class="pricing-document pricing-document-front"><span class="document-type">VOTRE PARCOURS</span><strong>Vos expériences.<br>Vos points forts.</strong><i></i><i></i><i></i><span class="document-tag">Votre CV</span></div>
+          <div class="pricing-session-preview">
+            <div class="session-preview-top"><span class="session-preview-icon">c</span><span>Votre prochain entretien<small>Une simulation à votre image</small></span><span class="preview-dots">···</span></div>
+            <div class="preview-question">« Parlez-moi d’une expérience<br>dont vous êtes fier. »</div>
+            <div class="preview-wave"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+            <div class="preview-debrief"><span class="preview-check">✓</span><span>Un débrief pour progresser<small>Structure, précision et clarté</small></span></div>
+          </div>
+        </div>
+        <div class="pricing-allowance" id="offer-preview" hidden><div><span id="preview-name"></span><strong><span id="preview-minutes"></span> <small>min</small></strong></div><div class="pricing-allowance-detail"><strong id="preview-period"></strong><span id="preview-daily"></span></div></div>
+        <p class="pricing-preview-caption">Votre CV donne le contexte. La simulation vous entraîne.<br>Le débrief vous aide à faire mieux au prochain essai.</p>
+      </aside>
+    </div>
+    <section class="pricing-included" aria-labelledby="included-title">
+      <div><p class="pricing-eyebrow">LE MÊME ESSENTIEL, DANS CHAQUE OFFRE</p><h2 id="included-title">Tout pour mieux vous préparer.</h2><p>Les fonctionnalités de préparation partagent le crédit et les limites de votre offre.</p></div>
+      <ul>
+        <li><span aria-hidden="true">✓</span><span><strong>Votre CV et vos documents</strong><small>Un contexte adapté à votre parcours.</small></span></li>
+        <li><span aria-hidden="true">✓</span><span><strong>Des simulations personnalisées</strong><small>À l’oral ou à l’écrit, selon votre rythme.</small></span></li>
+        <li><span aria-hidden="true">✓</span><span><strong>Un débrief du coach</strong><small>Des pistes concrètes après vos réponses.</small></span></li>
+        <li><span aria-hidden="true">✓</span><span><strong>L’aide à la réponse</strong><small>Pour vos simulations et les appels autorisés.</small></span></li>
+      </ul>
+    </section>
+    <section class="pricing-faq" aria-labelledby="faq-title">
+      <div><p class="pricing-eyebrow">LES RÉPONSES AVANT DE COMMENCER</p><h2 id="faq-title">Clair dès le départ.</h2><p>Le crédit, la durée, le renouvellement.<br>Tout est ici.</p><a href="mailto:mdiabate04@icloud.com">Nous contacter <span aria-hidden="true">↗</span></a></div>
+      <div class="pricing-faq-list">
+        <details><summary>Comment les minutes sont-elles décomptées ?</summary><p>Une minute correspond à une minute d’audio transcrite. En entraînement, l’analyse d’une réponse écrite consomme une minute. Le débrief immédiat d’une réponse dictée n’est pas décompté une seconde fois lorsque son reçu vocal est disponible.</p></details>
+        <details><summary>Quelle est la différence entre le Pass et l’abonnement ?</summary><p>Le Pass Sprint est un achat unique : il ne se renouvelle pas. Essentiel et Pro se renouvellent chaque mois. Vous pouvez résilier depuis le portail de facturation accessible dans Mon compte. L’accès reste ouvert jusqu’à la fin de la période payée.</p></details>
+        <details><summary>Comment fonctionne l’essai gratuit ?</summary><p id="free-terms">Les conditions de l’essai sont affichées dans l’offre Gratuit, une fois les tarifs chargés.</p></details>
+        <details><summary>Y a-t-il une limite quotidienne ou des frais supplémentaires ?</summary><p id="daily-terms">Le plafond audio quotidien est indiqué pour chaque offre.</p><p>Les minutes sont un crédit maximal. Des plafonds IA s’appliquent aussi aux réponses, recherches et générations. Si une limite est atteinte, l’outil vous en informe et s’arrête : aucun dépassement n’est facturé automatiquement. Ces offres ne sont pas illimitées.</p></details>
+        <details><summary>Les minutes non utilisées sont-elles reportées ?</summary><p>Non. Le crédit du Pass expire à la fin de sa durée de validité. Le crédit des abonnements est renouvelé à chaque période mensuelle payée, sans report. Vos préparations restent accessibles lorsque votre crédit expire.</p></details>
+        <details><summary>Puis-je utiliser l’aide pendant un vrai entretien ?</summary><p>L’outil est conçu pour la préparation et les simulations. Lors d’un appel réel, vérifiez le règlement de l’employeur et obtenez l’accord des participants avant toute capture audio. Relisez les suggestions : l’IA peut faire des erreurs et aucun résultat d’embauche n’est garanti.</p></details>
+      </div>
+    </section>
+  </main>
+  <footer class="legal-footer"><nav aria-label="Informations légales"><a href="/cgu.html">CGU</a><a href="/cgv.html">CGV</a><a href="/confidentialite.html">Confidentialité</a><a href="/mentions-legales.html">Mentions légales</a><a href="mailto:mdiabate04@icloud.com?subject=Retour%20sur%20la%20b%C3%AAta">Donner mon avis</a></nav></footer>
+  <script type="module" src="/tarifs.js"></script><script defer src="/analytics.js"></script>
+</body></html>
