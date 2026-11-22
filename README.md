@@ -6,11 +6,11 @@ Copilote Entretien est une application de préparation aux entretiens. Elle comp
 
 Installez Node.js 24 ou plus récent, puis lancez `npm ci`. Créez `.env` à partir de `.env.example` et configurez `OPENAI_API_KEY`. La commande `npm start` ouvre le service sur `http://localhost:3100` par défaut. `npm test` vérifie les parcours API avec une base SQLite vierge et un fournisseur IA simulé.
 
-Les tests navigateur peuvent utiliser une installation de Playwright indépendante du projet. Indiquez son dossier parent via `COPILOTE_PLAYWRIGHT`. Ce dossier doit contenir `node_modules/playwright`. Installez le navigateur WebKit de Playwright et Microsoft Edge avant d’exécuter la suite.
+Les tests navigateur peuvent utiliser une installation de Playwright indépendante du projet. Indiquez son dossier parent via `COPILOTE_PLAYWRIGHT`. Ce dossier doit contenir `node_modules/playwright`. Installez les navigateurs WebKit et Chromium de Playwright ainsi que Microsoft Edge avant d’exécuter la suite. Chromium vérifie l’extension réellement chargée, avec une capture audio simulée.
 
 ## Parcours candidat
 
-- L’essai IA dure 10 minutes à partir de la première action IA. L’espace candidat et les débriefs restent disponibles après expiration.
+- L’essai public donne 15 minutes et 5 questions d’aide à la réponse, valables 7 jours après vérification de l’e-mail. Un seul essai par adresse. Les préparations restent accessibles après expiration.
 - L’espace prépare le poste, l’offre et le CV. Les simulations et le copilote réutilisent ces données.
 - Une simulation peut être reprise depuis l’historique. Elle accepte les réponses écrites et la dictée.
 - Les indicateurs de dictée sont des estimations tirées des mots transcrits et du temps enregistré.
@@ -22,11 +22,11 @@ Les tests navigateur peuvent utiliser une installation de Playwright indépendan
 
 Le Dockerfile exécute Node.js sans privilèges administrateur. Utilisez une instance avec stockage persistant monté sur `/data` et un proxy HTTPS à l’adresse exacte fournie dans `APP_BASE_URL`. Configurez les adresses de proxy de confiance avec `TRUST_PROXY` selon l’hébergement. Gardez ce volume hors des sauvegardes publiques. Les sauvegardes SQLite effectuées pendant le fonctionnement doivent utiliser un mécanisme compatible avec SQLite.
 
-Les secrets sont des variables d’environnement du serveur. Pour le mot de passe oublié, configurez SMTP et l’origine publique HTTPS. Pour la facturation, configurez les clés Stripe, les identifiants de tarifs récurrents et le portail client. Enregistrez `/api/billing/webhook` pour les événements `customer.subscription.created`, `customer.subscription.updated` et `customer.subscription.deleted`. Validez le parcours Stripe en mode test avant tout encaissement.
+Les secrets sont des variables d’environnement du serveur. Pour le mot de passe oublié, configurez SMTP et l’origine publique HTTPS. Pour la facturation, utilisez les clés Stripe de test, le script `npm run stripe:setup` et la procédure dans [docs/launch.md](docs/launch.md). Le Pass et les abonnements ont des événements distincts ; validez Checkout, le portail, les doublons et les renouvellements avant tout encaissement.
 
 La prévisualisation privée s’active avec un `PREVIEW_TOKEN` aléatoire d’au moins 32 caractères et une origine HTTPS. Le lien de prévisualisation transmet ce jeton une fois, puis le serveur redirige vers une URL sans jeton et envoie un cookie signé. Réservez cette configuration aux aperçus privés.
 
-`npm run usage` affiche les nombres agrégés de simulations, d’essais et d’abonnements, ainsi que les appels IA, les jetons signalés par l’API et le volume audio. Le rapport ne contient ni le texte des échanges ni d’identifiants.
+`npm run usage` affiche les nombres agrégés de simulations, d’essais et d’abonnements, ainsi que les appels IA, les jetons signalés par l’API et le volume audio. Le rapport ne contient aucun texte d’échange. Le suivi des coûts utilise des identifiants internes de compte ; gardez-le privé.
 
 ## Serveur, sécurité et sauvegardes
 
@@ -61,3 +61,7 @@ rédaction (GROUNDED_ANSWER_MODEL, défaut gpt-4.1), avec les règles factuelles
 L'identification est préparée pendant l'écoute et réutilisée seulement si la
 transcription est identique. Les extraits audio durent au maximum 4 secondes, ou
 s'arrêtent après environ 500 ms de silence. Le délai réseau et fournisseur reste variable.
+
+## Publication et exploitation
+
+Voir [docs/launch.md](docs/launch.md) pour les offres configurables, Stripe test, la vérification d’e-mail, les invitations, les sauvegardes, les contrôles DNS, le dossier d’extension et les décisions restantes. `npm run preflight` signale les prérequis manquants sans afficher de secrets. Aucun déploiement automatique n’est activé.

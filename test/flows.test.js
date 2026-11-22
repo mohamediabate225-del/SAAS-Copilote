@@ -2,7 +2,7 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { spawn } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, readFile, writeFile, cp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { once } from "node:events";
@@ -12,10 +12,21 @@ import { DatabaseSync } from "node:sqlite";
 import express from "express";
 
 
+const extensionManifest=JSON.parse(await readFile(new URL("../extension/manifest.json",import.meta.url),"utf8"));
+const extensionId=[...createHash("sha256").update(Buffer.from(extensionManifest.key,"base64")).digest().subarray(0,16)].flatMap(b=>[b>>4,b&15]).map(n=>String.fromCharCode(97+n)).join("");
 let directory, database, fixture, child, base;
 let calls = 0;
 const password = "exemple-local-sans-valeur";
 const cookieOf = response => response.headers.get("set-cookie")?.split(";")[0];
+function wavFixture(seconds=1) {
+  const pcm=Buffer.alloc(seconds*16000*2), header=Buffer.alloc(44);
+  for(let i=0;i<pcm.length/2;i++)pcm.writeInt16LE(Math.round(Math.sin(i/16000*440*Math.PI*2)*8000),i*2);
+  header.write("RIFF");header.writeUInt32LE(36+pcm.length,4);header.write("WAVEfmt ",8);
+  header.writeUInt32LE(16,16);header.writeUInt16LE(1,20);header.writeUInt16LE(1,22);
+  header.writeUInt32LE(16000,24);header.writeUInt32LE(32000,28);header.writeUInt16LE(2,32);header.writeUInt16LE(16,34);
+  header.write("data",36);header.writeUInt32LE(pcm.length,40);
+  return Buffer.concat([header,pcm]);
+}
 const question = "Comment avez-vous géré un imprévu ?";
 const scores = { relevance: 80, structure: 75, specificity: 66, impact: 72, clarity: 91 };
 const fakeCoach = {
@@ -75,7 +86,7 @@ before(async () => {
       ...process.env,
       BILLING_ENABLED: "false", NODE_ENV: "test", HOST: "127.0.0.1", PORT: "0",
       OPENAI_API_KEY: "faux-test-local", OPENAI_BASE_URL: urlFor(fixture) + "/v1",
-      COPILOTE_DB_PATH: database, EXTENSION_ID:"a".repeat(32),
+      COPILOTE_DB_PATH: database, EXTENSION_ID:extensionId,
       PREVIEW_TOKEN: "", PREVIEW_PASSWORD: "", APP_BASE_URL: "", APP_PASSWORD: "",
       SMTP_HOST: "", STRIPE_SECRET_KEY: "",
     },
@@ -98,6 +109,8 @@ after(async () => {
     await once(child, "exit");
   }
   fixture?.close();
+  const {db:securityDb}=await import("../storage.js");
+  securityDb.close();
   if (directory) await rm(directory, { recursive: true });
 });
 
@@ -113,7 +126,7 @@ function request(path, { method = "GET", cookie, body, headers } = {}) {
 }
 async function register(email) {
   const result = await request("/api/account/register", {
-    method: "POST", body: { first_name: "Compte", last_name: "Test", email, password, password_confirmation: password },
+    method: "POST", body: { first_name: "Compte", last_name: "Test", email, password, password_confirmation: password, accept_terms:true },
   });
   assert.equal(result.status, 201);
   assert.match(result.headers.get("set-cookie"), /HttpOnly.*SameSite=Strict/);
@@ -157,7 +170,7 @@ test("compte, préparation, essai, analyse, reprise, isolation et export", async
   assert.equal(active.remaining_seconds,null);
 
   const spoken = new FormData();
-  spoken.set("audio", new Blob(["fixture"], { type: "audio/webm" }), "test.webm");
+  spoken.set("audio", new Blob([wavFixture()], { type: "audio/wav" }), "test.wav");
   const transcript = await (await request("/api/transcribe", { ...auth, method: "POST", body: spoken })).json();
   assert.match(transcript.text, /Euh/);
   const coachResponse = await request("/api/training/feedback", {
@@ -196,7 +209,7 @@ test("compte, préparation, essai, analyse, reprise, isolation et export", async
   assert.equal(context.resume_id, null);
   assert.doesNotMatch(context.profile, /stock fictif/);
 
-  const extensionOrigin = "chrome-extension://" + "a".repeat(32);
+  const extensionOrigin = "chrome-extension://" + extensionId;
   const paired = await (await request("/api/account/extension", { ...auth, method: "POST" })).json();
   const extension = { headers: { Origin: extensionOrigin, Authorization: "Bearer " + paired.token } };
   assert.equal((await request("/api/account/context", { cookie, headers: { Origin: extensionOrigin } })).status, 401);
@@ -206,6 +219,7 @@ test("compte, préparation, essai, analyse, reprise, isolation et export", async
   assert.equal((await request("/api/account/context", extension)).status, 401);
 
   const db = new DatabaseSync(database);
+  db.exec("PRAGMA busy_timeout=5000");
   db.prepare("UPDATE users SET trial_started=? WHERE email=?").run(Date.now() - 601000, "premier@example.test");
   db.close();
   assert.equal((await trial()).state, "free");
@@ -247,6 +261,7 @@ test("réinitialisation à usage unique et révocation des sessions", async () =
   const cookie = await register(email);
   const token = "a1".repeat(32);
   const db = new DatabaseSync(database);
+  db.exec("PRAGMA busy_timeout=5000");
   const user = db.prepare("SELECT id FROM users WHERE email=?").get(email);
   db.prepare("INSERT INTO password_resets VALUES (?,?,?)").run(digest(token), user.id, Date.now() + 30000);
   db.close();
@@ -331,15 +346,25 @@ test("WebKit mobile et Edge exécutent le parcours candidat", { skip: !process.e
       if (!mobile) await page.context().grantPermissions(["microphone"]);
       page.setDefaultTimeout(14000);
       const errors = [];
-      page.on("pageerror", error => errors.push(error.message));
+      page.on("pageerror", error => { errors.push(error.message); if(process.env.QA_DEBUG_BROWSER)console.error("Browser error",page.url(),error.stack); });
+      if(process.env.QA_DEBUG_BROWSER){
+        page.on("requestfailed",request=>console.error("Request interrupted",page.url(),request.url(),request.failure()?.errorText));
+        page.on("console",message=>{if(message.text().startsWith("Unhandled fixture"))console.error(message.text());});
+        await page.addInitScript(()=>window.addEventListener("unhandledrejection",event=>console.error("Unhandled fixture",location.href,String(event.reason),event.reason?.stack)));
+      }
       const paths = ["/", "/compte.html", "/mot-de-passe.html", "/entrainement.html", "/index.html",
-        "/tarifs.html", "/extension-guide.html", "/demo.html", "/confidentialite.html", "/achats-supply-chain.html"];
+        "/tarifs.html", "/extension-guide.html", "/demo.html", "/confidentialite.html", "/cgu.html", "/cgv.html", "/mentions-legales.html", "/verification.html", "/paiement-succes.html", "/paiement-annule.html", "/achats-supply-chain.html"];
       for (const width of widths) {
         await page.setViewportSize({ width, height: 820 });
         for (const path of paths) {
           const res = await page.goto(base + path, { waitUntil: "domcontentloaded" });
           assert.ok([200, 304].includes(res.status()), `${path} HTTP ${res.status()}`);
           await page.locator("h1").first().waitFor();
+          // Inspect the completed access state, rather than unloading during its initial fetch.
+          await page.waitForFunction(()=>{
+            const access=document.querySelector('[data-trial] span');
+            return !access || access.textContent.trim().length>0;
+          });
           const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
           assert.ok(overflow <= 1, `${path} déborde de ${overflow} px à ${width} px`);
         }
@@ -353,6 +378,7 @@ test("WebKit mobile et Edge exécutent le parcours candidat", { skip: !process.e
       await registration.getByLabel("Adresse e-mail").fill(`navigateur-${mobile ? "mobile" : "bureau"}@example.test`);
       await registration.getByLabel("Mot de passe", { exact: true }).fill(password);
       await registration.getByLabel("Confirmer le mot de passe").fill(password);
+      await registration.locator("[name=accept_terms]").check();
       await registration.getByRole("button", { name: "Créer mon compte" }).click();
       await page.waitForURL("**/dashboard.html");
       await page.getByRole("heading",{name:"Historique des sessions"}).waitFor();
@@ -406,7 +432,7 @@ test("WebKit mobile et Edge exécutent le parcours candidat", { skip: !process.e
       await page.waitForURL("**/dashboard.html#sessions");
       await page.getByRole("heading",{name:"Historique des sessions"}).waitFor();
       await page.goto(base+"/entrainement.html");
-      await page.getByText("Accès gratuit · toutes les fonctionnalités sont ouvertes.").waitFor();
+      await page.getByText(/Bêta locale · .* min disponibles/).waitFor();
       await page.getByRole("navigation", { name: "Navigation principale" }).getByRole("link", { name: "Mon espace" }).click();
       const preparation = page.locator("#preparation");
       await preparation.getByLabel("Poste visé").fill("Responsable achats");
@@ -418,7 +444,7 @@ test("WebKit mobile et Edge exécutent le parcours candidat", { skip: !process.e
       await page.waitForFunction(() => document.querySelector('#setup-form [name="role"]').value === "Responsable achats");
       await page.getByRole("button", { name: "Commencer" }).click();
       await page.getByRole("heading", { name: question }).waitFor();
-      await page.getByText("Accès gratuit · toutes les fonctionnalités sont ouvertes.").waitFor();
+      await page.getByText(/Bêta locale · .* min disponibles/).waitFor();
       await page.getByLabel("Votre réponse").fill("J’ai anticipé un risque fournisseur et proposé un autre délai.");
       await page.getByRole("button", { name: "Sauvegarder et quitter" }).click();
       await page.locator("#history-list li").filter({hasText:"Responsable achats"}).getByRole("button", { name: "Reprendre", exact: true }).click();
@@ -476,4 +502,75 @@ test("une réponse avec CV s'affiche avant la fin de la génération", async () 
   let rest="";
   for (;;) { const chunk=await reader.read();if(chunk.done)break;rest+=new TextDecoder().decode(chunk.value); }
   assert.equal(rest,"Suite.");
+});
+
+test("consentements versionnés, vérification à usage unique et quota avant le fournisseur",async()=>{
+  const login=await request("/api/account/login",{method:"POST",body:{email:"cv-import@example.test",password}});
+  const cookie=cookieOf(login),store=new DatabaseSync(database);
+  store.exec("PRAGMA busy_timeout=5000");
+  try{
+    const user=store.prepare("SELECT id FROM users WHERE email=?").get("cv-import@example.test");
+    assert.equal(store.prepare("SELECT count(*) n FROM consents WHERE user_id=? AND version='2026-11-21'").get(user.id).n,2);
+    const token="c".repeat(64);
+    store.prepare("UPDATE users SET email_verified_at=NULL WHERE id=?").run(user.id);
+    store.prepare("INSERT INTO email_verifications VALUES(?,?,?)").run(digest(token),user.id,Date.now()+60000);
+    assert.equal((await request("/api/account/verification/confirm",{method:"POST",body:{token}})).status,200);
+    assert.equal((await request("/api/account/verification/confirm",{method:"POST",body:{token}})).status,400);
+    assert.equal((await (await request("/api/account/verification",{cookie})).json()).verified,true);
+    const used=calls;
+    store.prepare("UPDATE plans SET minutes=0 WHERE id IN ('beta','free')").run();
+    try{
+      const result=await request("/api/training/question",{method:"POST",cookie,body:{context:{}}});
+      assert.equal(result.status,402);assert.equal(calls,used);
+    }finally{store.prepare("UPDATE plans SET minutes=400 WHERE id='beta'").run();store.prepare("UPDATE plans SET minutes=15 WHERE id='free'").run();}
+    assert.equal((await request("/api/account/context",{cookie,headers:{Origin:"chrome-extension://"+"b".repeat(32)}})).status,403);
+  }finally{store.close();}
+});
+test("un fichier audio illisible ou trop long est refusé avant OpenAI",async()=>{
+  const login=await request("/api/account/login",{method:"POST",body:{email:"cv-import@example.test",password}}),cookie=cookieOf(login),used=calls;
+  for(const [bytes,expected] of [[Buffer.from("not audio"),400],[wavFixture(181),413]]){
+    const form=new FormData();form.set("audio",new Blob([bytes],{type:"audio/wav"}),"audio.wav");
+    const res=await request("/api/transcribe",{method:"POST",cookie,body:form});
+    assert.equal(res.status,expected);
+  }
+  assert.equal(calls,used);
+});
+
+test("extension MV3 installée : association sans cookies, capture simulée, réponse et révocation",{skip:!process.env.COPILOTE_PLAYWRIGHT},async()=>{
+ const require=createRequire(join(process.env.COPILOTE_PLAYWRIGHT,"package.json")),{chromium}=require("playwright");
+ const source=join(directory,"extension");
+ await cp("extension",source,{recursive:true});
+ await writeFile(join(source,"manifest.json"),JSON.stringify({...extensionManifest,host_permissions:[base+"/*"]}));
+ await writeFile(join(source,"settings.js"),"const COPILOTE_SERVER_ORIGIN = "+JSON.stringify(base)+";");
+ const browser=await chromium.launchPersistentContext(join(directory,"extension-profile"),{channel:"chromium",headless:true,args:[`--disable-extensions-except=${source}`,`--load-extension=${source}`]});
+ try{
+  const worker=browser.serviceWorkers()[0]||await browser.waitForEvent("serviceworker");
+  assert.equal(new URL(worker.url()).host,extensionId);
+  const login=await request("/api/account/login",{method:"POST",body:{email:"cv-import@example.test",password}}),cookie=cookieOf(login);
+  await request("/api/account/preparation",{cookie,method:"PUT",body:{role:"Acheteur test extension",company:"Exemple"}});
+  const {token}=await (await request("/api/account/extension",{cookie,method:"POST"})).json();
+  const page=await browser.newPage();page.setDefaultTimeout(12000);
+  await page.addInitScript(()=>{
+   navigator.mediaDevices.getDisplayMedia=async()=>{
+    const audio=new AudioContext();await audio.resume();const oscillator=audio.createOscillator(),destination=audio.createMediaStreamDestination();
+    oscillator.connect(destination);oscillator.start();
+    destination.stream.getAudioTracks()[0].addEventListener("ended",()=>audio.close());
+    return destination.stream;
+   };
+  });
+  await page.goto("chrome-extension://"+extensionId+"/panel.html");
+  await page.locator("summary").click();
+  await page.locator("#pairCode").fill(token);await page.locator("#syncAccount").click();
+  await page.getByText("Préparation synchronisée.",{exact:true}).waitFor();
+  assert.equal(await page.locator("#role").inputValue(),"Acheteur test extension");
+  assert.equal((await browser.cookies(base)).length,0);
+  await page.locator("#record").click();
+  await page.getByText("Confirmez l’accord des participants avant de démarrer.").waitFor();
+  await page.locator("#audioConsent").check();await page.locator("#record").click();
+  await page.waitForFunction(()=>document.getElementById("record").classList.contains("recording"));
+  await new Promise(resolve=>setTimeout(resolve,1000));await page.locator("#record").click();
+  await page.locator("#answer").getByText("Réponse de test.",{exact:true}).waitFor();
+  await request("/api/account/extension",{cookie,method:"DELETE"});
+  await page.locator("#syncAccount").click();await page.getByText("Connectez-vous pour continuer.",{exact:true}).waitFor();
+ }finally{await browser.close();}
 });

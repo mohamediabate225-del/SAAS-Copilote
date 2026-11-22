@@ -16,3 +16,10 @@
 !prompts.js
 !public/
 !public/**
+
+!quotas.js
+!audio-duration.js
+!mailer.js
+!registration.js
+!payments.js
+!monitoring.js

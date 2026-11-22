@@ -1,0 +1,38 @@
+# Prepared configuration only. Obtain the owner's approval before creating this service.
+services:
+  - type: web
+    name: copilote-ia
+    runtime: docker
+    plan: starter
+    region: frankfurt
+    autoDeployTrigger: off
+    healthCheckPath: /api/health
+    disk:
+      name: copilote-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: HOST
+        value: 0.0.0.0
+      - key: PORT
+        value: 3100
+      - key: COPILOTE_DB_PATH
+        value: /data/copilote.sqlite
+      - key: APP_BASE_URL
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: TRIAL_IDENTITY_SECRET
+        generateValue: true
+      - key: EXTENSION_ID
+        sync: false
+      - key: INVITATION_REQUIRED
+        value: "true"
+      - key: BILLING_ENABLED
+        value: "false"
+      - key: ANALYTICS_ENABLED
+        value: "false"
+      - key: STRIPE_LIVE_ENABLED
+        value: "false"
