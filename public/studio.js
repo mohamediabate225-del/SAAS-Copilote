@@ -1,5 +1,8 @@
+import { consentRemembered, rememberConsent } from "./audio-consent.js";
 import { api, apiFetch, json, setupTrial } from "./app.js";
 const el = (id) => document.getElementById(id);
+el("consent").checked=consentRemembered();
+el("consent").onchange=()=>rememberConsent(el("consent").checked);
 const refreshTrial = setupTrial(el("studioTrial"));
 const id = new URLSearchParams(location.search).get("session");
 const path = "/api/workspace/sessions/" + encodeURIComponent(id);
@@ -15,6 +18,20 @@ let session,
   analyser,
   audioSamples;
 let answerQueue = Promise.resolve();
+let activeTranscriptions=0;
+const waitingTranscriptions=[];
+function transcribeInOrder(body) {
+  return new Promise((resolve,reject)=>{
+    const run=()=>{
+      activeTranscriptions++;
+      api("/api/transcribe",{method:"POST",body}).then(resolve,reject).finally(()=>{
+        activeTranscriptions--;
+        waitingTranscriptions.shift()?.();
+      });
+    };
+    if(activeTranscriptions<2)run();else waitingTranscriptions.push(run);
+  });
+}
 let focusCache, focusTimer, renderFrame;
 function scheduleRender() {
   if (!renderFrame) renderFrame = requestAnimationFrame(() => { renderFrame = null; render(); });
@@ -29,7 +46,7 @@ function resolveFocus(input) {
   const key = JSON.stringify(input);
   if (focusCache?.key !== key) {
     const promise = api("/api/focus-question",json("POST",input));
-    promise.catch(() => {}); // Background failure is displayed only when Answer needs it.
+    promise.catch(() => { if(focusCache?.key===key)focusCache=null; }); // Retry transient failures on the next click.
     focusCache = {key,promise};
   }
   return focusCache.promise;
@@ -37,7 +54,7 @@ function resolveFocus(input) {
 function prepareFocus() {
   clearTimeout(focusTimer);
   focusTimer = setTimeout(() => {
-    if (!closed && !answering && rows.length) resolveFocus(focusInput()).catch(() => {});
+    if (!closed && !answering && rows.length && /[?？]|comment|pourquoi|quel|pouvez|pourriez|présentez|décrivez|plus en détail|what|how|why|tell me/i.test(rows.at(-1).q)) resolveFocus(focusInput()).catch(() => {});
   }, 250);
 }
 let transcribing = Promise.resolve(),
@@ -242,9 +259,6 @@ function captureChunk() {
       const blob = new Blob(parts, { type: r.mimeType }),
         mime = r.mimeType.split(";")[0];
       backlog++;
-      transcribing = transcribing
-        .then(async () => {
-          if (closed) return;
           const body = new FormData();
           body.set(
             "audio",
@@ -258,7 +272,12 @@ function captureChunk() {
           );
           body.set("language", el("spokenLanguage").value);
           body.set("previous_text", rows.slice(-2).map(item=>item.q).join(" ").slice(-500));
-          const result = await api("/api/transcribe", { method: "POST", body });
+      const pending=transcribeInOrder(body);
+      pending.catch(()=>{});
+      transcribing = transcribing
+        .then(async () => {
+          if (closed) return;
+          const result = await pending;
           if (rows.length === 0) refreshTrial();
           if (result.text?.trim() && !closed) {
             const row = append(result.text.trim());

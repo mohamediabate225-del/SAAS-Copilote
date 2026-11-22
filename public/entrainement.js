@@ -1,3 +1,4 @@
+import { ensureAudioConsent } from "./audio-consent.js";
 import { api, json, setupTrial, showMessage } from "./app.js";
 
 const $ = id => document.getElementById(id);
@@ -244,9 +245,10 @@ answerForm.addEventListener("submit", event => {
     showMessage(status, "Le coach analyse votre réponse…");
     try {
       const { coach, delivery } = await api("/api/training/feedback", json("POST", {
-        question: session.question, answer: finalAnswer, context: session.context, delivery: session.delivery,
+        question: session.question, answer: finalAnswer, context: session.context, delivery: session.delivery, speech_receipts: session.speech_receipts || [],
       }));
       session.answer = finalAnswer;
+      session.speech_receipts = [];
       session.turns.push({ q: session.question, a: finalAnswer, coach, delivery });
       render();
       showMessage(status, "Débrief disponible.");
@@ -299,6 +301,7 @@ mic.addEventListener("click", async () => {
   const target = session;
   let stream;
   try {
+    if(!await ensureAudioConsent())return;
     stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     if (target !== session) { stream.getTracks().forEach(track => track.stop()); return; }
     recorder = new MediaRecorder(stream);
@@ -331,6 +334,7 @@ mic.addEventListener("click", async () => {
         const firstDictation = !answer.value.trim();
         answer.value = [answer.value.trim(), result.text].filter(Boolean).join(" ").slice(0, 6000);
         session.answer = answer.value;
+        session.speech_receipts = [...(session.speech_receipts || []),result.speech_receipt].filter(Boolean);
         session.delivery = firstDictation ? { duration, thinking_seconds: thinking } : null;
         audioStatus.textContent = "Transcription ajoutée. Vous pouvez la corriger.";
         scheduleSave();

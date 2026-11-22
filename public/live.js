@@ -1,3 +1,4 @@
+import { ensureAudioConsent } from "./audio-consent.js";
 import { api, setupTrial } from "./app.js";
 (() => {
   const $ = (s) => document.querySelector(s);
@@ -189,6 +190,7 @@ import { api, setupTrial } from "./app.js";
 
   // --- Capture audio ---
   async function openAudio() {
+    if(!await ensureAudioConsent())throw new Error("Capture annulée.");
     if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
       throw new Error("Micro indisponible. Saisis la question par écrit.");
     }

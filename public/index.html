@@ -23,6 +23,8 @@
     font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
     min-height: 100vh;
     display: flex;
+    flex-direction: column;
+    align-items: center;
     justify-content: center;
   }
   main { width: 100%; max-width: 720px; padding: 20px 20px 48px; }
@@ -104,7 +106,7 @@
     </div>
   </nav>
   <p class="eyebrow">Assistant de réponse</p>
-  <h1>Copilote d’entretien</h1>
+  <h1>Aide à la réponse</h1>
   <p class="intro-copy">Préparez une réponse claire à partir du poste et de votre expérience.</p>
   <p data-trial class="trial-bar" hidden><span role="status"></span><time aria-hidden="true" hidden></time><a hidden></a></p>
   <p class="consent-note">Utilisez la capture audio uniquement avec l’accord des participants et lorsque les règles de l’entretien l’autorisent.</p>
@@ -175,5 +177,5 @@
 <footer class="app-wrap site-footer"><nav class="toolbar" aria-label="Liens utiles"><a class="text-action" href="/">Accueil</a><a class="text-action" href="/entrainement.html">Entraînement</a><a class="text-action" href="/confidentialite.html">Confidentialité</a></nav></footer>
 
 <script type="module" src="/live.js"></script>
-</body>
+<footer class="legal-footer"><nav aria-label="Informations légales"><a href="/cgu.html">CGU</a><a href="/cgv.html">CGV</a><a href="/confidentialite.html">Confidentialité</a><a href="/mentions-legales.html">Mentions légales</a><a href="mailto:mdiabate04@icloud.com?subject=Retour%20sur%20la%20b%C3%AAta">Donner mon avis</a></nav></footer><script defer src="/analytics.js"></script></body>
 </html>

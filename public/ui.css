@@ -140,3 +140,9 @@ body:not(.app-page) main { padding-inline: clamp(1rem, 3vw, 1.5rem); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
+
+.check-line,.surface label.check-line{display:flex;align-items:flex-start;gap:.75rem;min-height:44px}.check-line input[type=checkbox]{width:20px;height:20px;flex:none;margin-top:3px}.legal-copy{max-width:780px}.legal-copy h2{margin-top:2rem}.legal-copy p,.legal-copy li{line-height:1.65}
+
+.legal-footer{padding:1rem 1.25rem;font-size:.8rem;flex:none}.legal-footer nav{display:flex;gap:.5rem 1rem;flex-wrap:wrap;justify-content:center}.legal-footer a{display:inline-flex;align-items:center;min-height:44px;color:inherit}.studio .legal-footer{background:#0c181b;color:#b9ccce}.legal-copy{padding-bottom:2rem}
+
+.legal-footer{width:100%;max-width:100%;min-width:0}.auth>.legal-footer{align-self:end}

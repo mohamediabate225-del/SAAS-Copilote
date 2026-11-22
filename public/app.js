@@ -39,46 +39,33 @@ export function safeDestination(value) {
 }
 
 export function setupTrial(banner) {
-  let deadline;
-  let state;
-  let stateText = "";
-  const text = banner.querySelector("span");
-  const clock = banner.querySelector("time");
-  const link = banner.querySelector("a");
-  function render() {
-    const seconds = Math.max(0, Math.ceil((deadline - Date.now()) / 1000)) || 0;
-    const active = state === "active" && seconds > 0;
-    const message = state === "free" ? "Accès gratuit · toutes les fonctionnalités sont ouvertes." : active ? "Temps d’essai restant"
-      : state === "ready" ? "10 minutes d’essai dès votre première action IA."
-      : state === "active" || state === "expired" ? "Essai terminé. Vos préparations et débriefs restent accessibles."
-      : state === "guest" ? "Connectez-vous pour accéder à l’IA."
-      : state === "error" ? "Impossible de vérifier l’accès à l’IA."
-      : state === "paid" ? "Abonnement actif." : "";
-    if (message !== stateText) {
-      text.textContent = message;
-      stateText = message;
-    }
-    clock.hidden = !active;
-    if (active) clock.textContent = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
-    const guest = state === "guest";
-    link.hidden = !(guest || state === "expired" || (state === "active" && !active));
-    link.textContent = guest ? "Se connecter" : "Voir les offres";
-    link.href = guest ? `/compte.html?retour=${encodeURIComponent(location.pathname)}` : "/tarifs.html";
-    banner.hidden = !message;
-  }
-  async function refresh() {
+  const text=banner.querySelector("span"), clock=banner.querySelector("time"), link=banner.querySelector("a");
+  let inFlight, controller, stopped=false;
+  async function load(signal) {
+    clock.hidden=true;banner.hidden=false;
     try {
-      const [trial, billing] = await Promise.all([api("/api/account/trial"), api("/api/billing/status")]);
-      state = billing.free_access ? "free" : billing.active ? "paid" : trial.state;
-      deadline = Date.now() + trial.remaining_seconds * 1000;
-    } catch (error) {
-      state = error.status === 401 ? "guest" : "error";
+      const usage=await api("/api/account/usage",{signal});
+      if(signal.aborted)return;
+      text.textContent=usage.local_beta?"Bêta locale · "+Math.floor(usage.remaining_seconds/60)+" min disponibles."
+        : !usage.email_verified?"Vérifiez votre adresse e-mail pour démarrer votre essai."
+        : usage.remaining_seconds>0?Math.floor(usage.remaining_seconds/60)+" min disponibles.": "Crédit épuisé ou expiré. Vos préparations restent accessibles.";
+      link.hidden=false;link.textContent="Mon accès";link.href="/compte.html";
+    }catch(error){
+      if(signal.aborted)return;
+      text.textContent=error.status===401?"Connectez-vous pour accéder à l’IA.":"Impossible de vérifier votre accès.";
+      link.hidden=false;link.textContent=error.status===401?"Se connecter":"Réessayer";
+      link.href=error.status===401?"/connexion.html":"/compte.html";
     }
-    render();
   }
-  setInterval(render, 1000);
-  window.addEventListener("pageshow", refresh);
-  document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });
-  refresh();
-  return refresh;
+  function refresh() {
+    if(stopped)return Promise.resolve();
+    if(inFlight)return inFlight;
+    controller=new AbortController();
+    const pending=load(controller.signal).finally(()=>{if(inFlight===pending)inFlight=null;});
+    inFlight=pending;return pending;
+  }
+  window.addEventListener("pagehide",()=>{stopped=true;controller?.abort();inFlight=null;});
+  window.addEventListener("pageshow",()=>{stopped=false;refresh();});
+  document.addEventListener("visibilitychange",()=>{if(!document.hidden)refresh();});
+  refresh();return refresh;
 }

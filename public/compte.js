@@ -54,6 +54,7 @@ async function refresh() {
   const [preparation, billing] = await Promise.all([
     api("/api/account/preparation"), api("/api/billing/status"), refreshResumes(), refreshTrial(),
   ]);
+  await refreshUsage();
   $("#email").textContent = user.email;
   fill($("#profile"), user, ["goals", "salary", "notes"]);
   fill($("#preparation"), preparation, ["resume_id", "role", "company", "offer", "notes"]);
@@ -247,3 +248,20 @@ $("#delete-account").addEventListener("submit", (event) => {
 });
 
 refresh().catch(error => showMessage(status, error.message, true));
+
+async function refreshUsage() {
+  const [usage,verification]=await Promise.all([api("/api/account/usage"),api("/api/account/verification")]);
+  $("#usage-summary").textContent=`${Math.floor(usage.remaining_seconds/60)} min restantes · audio aujourd’hui : ${Math.ceil(usage.daily_audio_seconds/60)} / ${Math.floor(usage.daily_audio_limit_seconds/60)} min.`;
+  $("#allowances").replaceChildren(...usage.allowances.map(item=>{
+    const p=document.createElement("p");
+    p.textContent=`${item.label} : ${Math.floor(item.remaining_seconds/60)} min, jusqu’au ${new Date(item.ends).toLocaleDateString("fr-FR")}`+(item.remaining_questions==null?"":` · ${item.remaining_questions} questions d’aide à la réponse restantes`);
+    return p;
+  }));
+  $("#verification-status").textContent=verification.verified?"Adresse e-mail vérifiée.":verification.sending_available?"Vérifiez votre e-mail pour démarrer l’essai.":"Adresse non vérifiée. L’envoi d’e-mails doit être configuré par l’administrateur.";
+  $("#verify-email").hidden=verification.verified||!verification.sending_available;
+  $("#accept-documents").hidden=verification.accepted;
+}
+$("#verify-email").onclick=()=>act($("#verify-email"),async()=>{await api("/api/account/verification/send",json("POST",{}));showMessage(status,"Lien envoyé. Vérifiez votre boîte de réception.");});
+$("#accept-documents").onsubmit=event=>{event.preventDefault();act(event.submitter,async()=>{await api("/api/account/consents",json("POST",{accepted:true}));await refreshUsage();});};
+
+document.getElementById("reset-audio-consent").onclick=()=>{try{localStorage.removeItem("copilote:audio-consent:2026-11-21");}catch{}showMessage(status,"La confirmation sera redemandée avant la prochaine capture sur ce navigateur.");};

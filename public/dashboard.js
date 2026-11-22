@@ -80,18 +80,12 @@ function onboarding(second = false) {
   );
 }
 function credits() {
-  el("credits").textContent =
-    config.free_access ? "Accès gratuit" : config.remaining === null
-      ? "Abonnement actif"
-      : config.remaining +
-        " session" +
-        (config.remaining === 1 ? "" : "s") +
-        " gratuite" +
-        (config.remaining === 1 ? "" : "s") +
-        " restante" +
-        (config.remaining === 1 ? "" : "s");
-  document.querySelector(".plan small").hidden = config.remaining === null;
+  api("/api/account/usage").then(usage=>{
+    el("credits").textContent=Math.floor(usage.remaining_seconds/60)+" min disponibles";
+    const small=document.querySelector(".plan small");small.hidden=false;small.textContent=usage.email_verified||usage.local_beta?"Voir les offres et votre consommation":"Vérifiez votre e-mail depuis Mon compte";
+  }).catch(()=>{el("credits").textContent="Mon accès";});
 }
+
 async function dashboard() {
   el("shell").hidden = false;
   el("account").textContent =

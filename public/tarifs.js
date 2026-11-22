@@ -1,44 +1,28 @@
-import { api, json, showMessage } from "./app.js";
-
-const status = document.querySelector("#billing-status");
-const plans = document.querySelector("#plans");
-const units = { day: "jour", week: "semaine", month: "mois", year: "an" };
-function node(tag, text) {
-  const element = document.createElement(tag);
-  element.textContent = text;
-  return element;
-}
-async function load() {
-  const result = await api("/api/billing/plans");
-  if (result.free_access) {
-    document.querySelector("main").innerHTML = '<section class="surface"><h1>Tout est ouvert pendant les tests</h1><p>Profitez gratuitement du copilote, des simulations, des CV, des documents et des portraits.</p><p>Votre accès continue après les dix minutes et les dix premières sessions.</p><a class="action" href="/dashboard.html">Ouvrir mon tableau de bord</a></section>';
-    return;
-  }
-  if (!result.plans.length) return;
-  for (const plan of result.plans) {
-    const article = node("article", "");
-    article.className = "surface";
-    const currency = new Intl.NumberFormat("fr-FR", { style: "currency", currency: plan.currency });
-    const amount = currency.format(plan.amount / (10 ** currency.resolvedOptions().maximumFractionDigits));
-    const interval = units[plan.interval] || plan.interval;
-    const price = plan.intervalCount === 1 ? `${amount} / ${interval}` : `${amount} tous les ${plan.intervalCount} ${interval}s`;
-    const button = node("button", "Choisir " + plan.label);
-    button.className = "action";
-    button.addEventListener("click", async () => {
-      button.disabled = true;
-      try {
-        const { url } = await api("/api/billing/checkout", json("POST", { plan: plan.id }));
-        location.assign(url);
-      } catch (error) {
-        if (error.status === 401) { location.assign("/compte.html?retour=%2Ftarifs.html"); return; }
-        showMessage(status, error.message, true);
-      } finally {
-        button.disabled = false;
-      }
-    });
-    article.append(node("h3", plan.label), node("p", price), node("p", `${plan.daily} actions IA par jour.`), button);
-    plans.append(article);
-  }
-  document.querySelector("#paid-plans").hidden = false;
-}
-load().catch(error => showMessage(status, error.message, true));
+import {api,json,showMessage} from './app.js';
+const status=document.getElementById('billing-status'),container=document.getElementById('plans');
+function node(tag,text){const el=document.createElement(tag);el.textContent=text;return el;}
+try {
+ const result=await api('/api/billing/plans');
+ status.textContent=result.test_mode?'Préparation du lancement : paiements de test uniquement.':result.enabled?'Choisissez une offre adaptée à votre préparation.':'Les paiements ne sont pas encore ouverts.';
+ for(const plan of result.plans){
+  const card=node('article','');card.className='surface';
+  const price=new Intl.NumberFormat('fr-FR',{style:'currency',currency:'EUR'}).format(plan.amount/100);
+  card.append(node('h2',plan.label),node('p',price+' TTC'+(plan.mode==='subscription'?' / mois':plan.mode==='payment'?' · paiement unique':'')));
+  card.append(node('p',`${plan.minutes} minutes${plan.mode==='subscription'?' par mois':` · valables ${plan.valid_days} jours`}`));
+  if(plan.mode==='free')card.append(node('p',`${plan.live_questions} questions d’aide à la réponse. Essai sans carte, après vérification de l’e-mail, une seule fois par adresse.`));
+  card.append(node('p',`${plan.daily_audio_minutes} minutes d’audio maximum par jour.`));
+  if(plan.mode==='free'){
+   const link=node('a','Créer mon compte');link.className='action';link.href='/connexion.html#inscription';card.append(link);
+  }else{
+   const button=node('button',plan.available?'Choisir '+plan.label:'Paiement bientôt disponible');button.className='action';button.disabled=!plan.available;
+   button.onclick=async()=>{
+    const consent=document.getElementById('accept-cgv');
+    if(!consent.checked){showMessage(status,'Lisez et acceptez les CGV pour continuer.',true);consent.focus();return;}
+    button.disabled=true;
+    try{const {url}=await api('/api/billing/checkout',json('POST',{plan:plan.id,accept_cgv:true}));location.assign(url);}
+    catch(error){if(error.status===401)location.assign('/connexion.html');else showMessage(status,error.message,true);}
+    finally{button.disabled=false;}
+   };card.append(button);
+  }container.append(card);
+ }
+}catch(error){showMessage(status,error.message,true);}

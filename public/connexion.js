@@ -7,6 +7,8 @@ function display() {
   el("title").textContent = create
     ? "Créer votre compte"
     : "Connexion à Copilote";
+  el("registrationTerms").hidden = !create;
+  form.elements.accept_terms.required = create;
   el("names").hidden = el("confirm").hidden = !create;
   for (const key of ["first_name", "last_name", "password_confirmation"])
     form.elements[key].required = create;
