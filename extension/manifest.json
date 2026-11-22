@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Copilote Entretien",
   "version": "0.1.0",
-  "description": "Un copilote latéral pour préparer et structurer vos réponses.",
+  "description": "Préparation et simulations d’entretien. Aide à la réponse avec capture audio explicite, uniquement lorsque les participants et les règles l’autorisent.",
   "minimum_chrome_version": "116",
   "permissions": [
     "sidePanel",

@@ -64,14 +64,12 @@ function setState(next, text) {
   button.textContent = next === "recording" ? "■  Terminer la question" : "●  Enregistrer une question";
 }
 async function findServer() {
-  for (const port of [3101, 3100]) {
-    try {
-      const url = `http://127.0.0.1:${port}`;
-      const res = await fetch(url + "/api/health");
-      if (res.ok && (await res.json()).service === "copilote-entretien") return url;
-    } catch {}
-  }
-  throw new Error("Le serveur local est arrêté. Lancez npm start dans le dossier du projet.");
+  try {
+    const res = await fetch(COPILOTE_SERVER_ORIGIN + "/api/health");
+    if (res.ok && (await res.json()).service === "copilote-entretien") return COPILOTE_SERVER_ORIGIN;
+  } catch {}
+
+  throw new Error("Le service est inaccessible. Vérifiez votre connexion et l’adresse configurée dans l’extension.");
 }
 function stopTracks() { if (stream) stream.getTracks().forEach((track) => track.stop()); stream = null; }
 async function answerQuestion(question) {
@@ -93,6 +91,7 @@ button.addEventListener("click", async () => {
   if (state !== "idle") return;
   try {
     if (!extensionToken) throw new Error("Associez votre compte avant de capturer le son.");
+    if (!document.getElementById("audioConsent").checked) throw new Error("Confirmez l’accord des participants avant de démarrer.");
     // Request the picker immediately during the user gesture.
     const pending = navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
     setState("busy", "Choisissez l’onglet et partagez son audio…");
@@ -109,7 +108,7 @@ button.addEventListener("click", async () => {
       try {
         const blob = new Blob(chunks, { type: recorder.mimeType || "audio/webm" });
         if (blob.size < 1000) throw new Error("Enregistrement trop court. Réessayez.");
-        const form = new FormData(); form.append("audio", blob, "question.webm");
+        const form = new FormData(); form.append("audio", blob, "question.webm");form.append("language", $("language").value === "auto" ? "fr" : $("language").value);
         const res = await extensionFetch(base + "/api/transcribe", { method: "POST", body: form });
         const data = await readResult(res);
         if (!res.ok || !data.text) throw new Error(data.error || "Aucune parole reconnue. Vérifiez l’audio partagé.");
@@ -123,3 +122,8 @@ button.addEventListener("click", async () => {
 });
 $("retry").addEventListener("click", async () => { try { const q = $("question").value.trim(); if (!q) throw new Error("Saisissez une question."); base = await findServer(); await answerQuestion(q); } catch (error) { setState("idle", error.message || "Une erreur est survenue."); } });
 window.addEventListener("pagehide", stopTracks);
+
+chrome.storage.local.get("audioConsentVersion").then(saved=>{document.getElementById("audioConsent").checked=saved.audioConsentVersion==="2026-11-21";});
+document.getElementById("audioConsent").onchange=event=>chrome.storage.local.set({audioConsentVersion:event.target.checked?"2026-11-21":""});
+
+document.getElementById("privacyLink").href=COPILOTE_SERVER_ORIGIN+"/confidentialite.html";

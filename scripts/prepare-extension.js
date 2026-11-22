@@ -1,0 +1,13 @@
+import 'dotenv/config';
+import { readFile, writeFile, mkdir, copyFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
+const url=new URL(process.env.APP_BASE_URL||'http://localhost:3100');
+if(url.protocol!=='https:'||url.username||url.password||url.pathname!=='/'||url.search||url.hash)throw new Error('Configurez APP_BASE_URL avec votre origine de production HTTPS exacte.');
+const output=resolve('release','extension');await mkdir(output,{recursive:true});
+for(const file of ['panel.html','panel.js','panel.css','background.js'])await copyFile(resolve('extension',file),resolve(output,file));
+const manifest=JSON.parse(await readFile('extension/manifest.json','utf8'));
+manifest.host_permissions=[url.origin+'/*'];
+await writeFile(resolve(output,'manifest.json'),JSON.stringify(manifest,null,2)+'\n');
+await writeFile(resolve(output,'settings.js'),'const COPILOTE_SERVER_ORIGIN = '+JSON.stringify(url.origin)+';\n');
+await writeFile(resolve(output,'STORE-DESCRIPTION.txt'),`COPILOTE.IA — préparation aux entretiens\nSimulations, préparation du CV et aide à la réponse pour les appels autorisés.\nLa capture démarre uniquement après votre action, sélection de la source et attestation de l’accord des participants.\nL’audio est transmis à votre serveur COPILOTE.IA, puis à OpenAI. Aucun audio brut n’est conservé par l’application.\nPermissions : sidePanel pour le volet, storage pour le jeton et les préférences, accès réseau au seul domaine du service.\nConfidentialité : ${url.origin}/confidentialite.html\nSupport : mdiabate04@icloud.com\nPremière diffusion : non répertoriée, après validation et accord du propriétaire.\n`);
+console.log('Dossier prêt : '+output+' (aucune publication effectuée).');
