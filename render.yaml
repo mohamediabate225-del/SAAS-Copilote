@@ -3,7 +3,9 @@ services:
   - type: web
     name: copilote-ia
     runtime: docker
-    plan: starter
+    repo: https://github.com/mohamediabate225-del/SAAS-Copilote
+    branch: feat/espace-candidat
+    plan: 0.5c-512mb
     region: frankfurt
     autoDeployTrigger: off
     healthCheckPath: /api/health
